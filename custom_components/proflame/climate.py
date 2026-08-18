@@ -94,6 +94,10 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         self._attr_target_temperature = 20.0
         self._commanded_flame: int | None = None
         self._last_command: Any = None
+        #: Somebody else has the flame. The *mode* still says heat, because
+        #: that is what was asked for and it has not been withdrawn; this is
+        #: what the appliance is actually doing about it, which is nothing.
+        self._suspended = False
 
     @property
     @override
@@ -110,25 +114,44 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
     @property
     @override
     def hvac_action(self) -> HVACAction:
-        """What the appliance is actually doing about it."""
-        if self._attr_hvac_mode is HVACMode.OFF:
+        """What is actually happening, as opposed to what was asked for.
+
+        While suspended this is `off` even though the mode is `heat`: the
+        request stands, the thermostat is simply not the one driving. That
+        split is the whole point of having both — and without it, yielding had
+        to be faked as a mode change, which then dragged the fire out with it.
+        """
+        if self._attr_hvac_mode is HVACMode.OFF or self._suspended:
             return HVACAction.OFF
         return HVACAction.HEATING if self.device.state.power else HVACAction.IDLE
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Say plainly whether the thermostat is in control right now."""
+        return {"thermostat_in_control": not self._suspended}
 
     @override
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Start or stop regulating.
 
-        Stopping does **not** put the fire out. This thermostat manages the
-        appliance, it does not own it: there is a switch for the fire, and
-        several other things can command it. Turning the manager off and
-        having the fire go out with it was surprising in exactly the way a
-        gas appliance should not be — and it made standing down, which is
-        supposed to be a quiet handover, into an act.
+        Asking for off here *does* put the fire out — somebody said stop
+        heating, and leaving a gas fire burning after being told to stop is
+        not a defensible reading of that. What must not put the fire out is
+        yielding the flame to someone else, which is a different event
+        entirely and no longer expressed as a mode change; see
+        [`Self._handle_device_update`].
+
+        Selecting heat also resumes after a yield, since choosing it again is
+        as clear a statement of "manage this" as there is.
         """
         self._attr_hvac_mode = hvac_mode
         self._commanded_flame = None
-        if hvac_mode is not HVACMode.OFF:
+        self._suspended = False
+        if hvac_mode is HVACMode.OFF:
+            if self.device.state.power:
+                await self.device.async_set(power=False)
+        else:
             await self._async_regulate(force=True)
         self.async_write_ha_state()
 
@@ -155,6 +178,8 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         if (target := kwargs.get(ATTR_TEMPERATURE)) is None:
             return
         self._attr_target_temperature = float(target)
+        # Setting a target is engaging with the thermostat, so it resumes.
+        self._suspended = False
         if self._attr_hvac_mode is HVACMode.HEAT:
             await self._async_regulate(force=True)
         self.async_write_ha_state()
@@ -176,31 +201,34 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         )
 
     async def _async_tick(self, _now: Any) -> None:
-        if self._attr_hvac_mode is HVACMode.HEAT:
+        if self._attr_hvac_mode is HVACMode.HEAT and not self._suspended:
             await self._async_regulate()
 
     @callback
     def _handle_device_update(self) -> None:
-        """Stand down when somebody else takes the flame.
+        """Yield when somebody else takes the flame.
 
-        Overrides the base class's plain state write. If the flame is not where
-        this entity put it, someone moved it — the handset, an automation, the
-        slider — and two controllers arguing over one fire helps nobody. The
-        thermostat yields rather than fighting, which is also the behaviour
-        that makes the slider feel like it works.
+        If the flame is not where this entity put it, someone moved it — the
+        handset, an automation, the slider — and two controllers arguing over
+        one fire helps nobody.
+
+        Yielding leaves the mode alone and the fire alone. Only the action
+        changes, to `off`. Turning the mode off instead, as this used to, said
+        something the user never asked for and put the fire out along with it.
         """
         if (
             self._attr_hvac_mode is HVACMode.HEAT
+            and not self._suspended
             and self._commanded_flame is not None
             and self.device.state.flame != self._commanded_flame
         ):
             _LOGGER.info(
-                "flame moved to %d, which is not the %d asked for; standing down "
-                "and leaving the fire as it is",
+                "flame moved to %d rather than the %d asked for; yielding control "
+                "and leaving the fire alone (select heat again to resume)",
                 self.device.state.flame,
                 self._commanded_flame,
             )
-            self._attr_hvac_mode = HVACMode.OFF
+            self._suspended = True
             self._commanded_flame = None
         self.async_write_ha_state()
 
