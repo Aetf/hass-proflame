@@ -268,8 +268,7 @@ everything for an hour looks exactly like a fireplace nobody has touched.
 ## What this analysis found that is still wrong
 
 Writing the tables surfaced three defects that using the integration had not,
-and two features it does not have.
-None are fixed yet.
+and review added two features it does not have. None are done yet.
 
 **G1. An expiring timer cannot reach a yielded thermostat.** Shutdown stops
 everything registered as driving, and a `YIELDED` thermostat deliberately is
