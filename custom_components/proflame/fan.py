@@ -14,6 +14,7 @@ from homeassistant.util.percentage import (
 )
 
 from . import ProflameConfigEntry
+from .device import Origin
 from .entity import ProflameEntity
 from .protocol import MAX_LEVEL
 
@@ -58,10 +59,10 @@ class ProflameBlower(ProflameEntity, FanEntity):
     async def async_set_percentage(self, percentage: int) -> None:
         """Set the blower speed, where zero stops it."""
         if percentage == 0:
-            await self.device.async_set(fan=0)
+            await self.device.async_set(Origin.USER, fan=0)
             return
         level = math.ceil(percentage_to_ranged_value(SPEED_RANGE, percentage))
-        await self.device.async_set(fan=max(1, min(MAX_LEVEL, level)))
+        await self.device.async_set(Origin.USER, fan=max(1, min(MAX_LEVEL, level)))
 
     @override
     async def async_turn_on(
@@ -74,9 +75,9 @@ class ProflameBlower(ProflameEntity, FanEntity):
         if percentage is not None:
             await self.async_set_percentage(percentage)
             return
-        await self.device.async_set(fan=self.device.state.fan or MAX_LEVEL)
+        await self.device.async_set(Origin.USER, fan=self.device.state.fan or MAX_LEVEL)
 
     @override
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop the blower."""
-        await self.device.async_set(fan=0)
+        await self.device.async_set(Origin.USER, fan=0)

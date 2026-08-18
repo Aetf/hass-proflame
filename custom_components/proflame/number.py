@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProflameConfigEntry
+from .device import Origin
 from .entity import ProflameEntity
 from .protocol import MAX_LEVEL
 
@@ -49,4 +50,4 @@ class ProflameFlame(ProflameEntity, NumberEntity):
     @override
     async def async_set_native_value(self, value: float) -> None:
         """Set the flame level."""
-        await self.device.async_set(flame=int(value))
+        await self.device.async_set(Origin.USER, flame=int(value))

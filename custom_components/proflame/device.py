@@ -14,7 +14,9 @@ it is stale, and the next press on it will transmit that stale state.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 import logging
 from typing import Any
 
@@ -29,6 +31,44 @@ from .protocol import ProflameCommand, Remote, State, decode_frame
 _LOGGER = logging.getLogger(__name__)
 
 _STORE_VERSION = 1
+
+
+class Origin(StrEnum):
+    """What caused a change to the believed state.
+
+    Carried rather than inferred. Every bug this integration has had came from
+    working out who had caused a change by comparing values, which cannot tell
+    "I set it to 4" from "somebody else set it to 4" and is blind to any field
+    the comparison does not happen to include. See docs/STATE.md.
+    """
+
+    #: One of the direct manual controls: the switch, flame, blower, light or
+    #: pilot. Not split further, because nothing downstream needs to know which
+    #: one a person reached for, and a distinction nobody consumes will rot.
+    USER = "user"
+    #: The thermostat, whether regulating or acting on its own controls.
+    THERMOSTAT = "thermostat"
+    #: The auto-off deadline.
+    TIMER = "timer"
+    #: A frame decoded off the air.
+    HANDSET = "handset"
+    #: Loaded from storage at startup. Believed, never transmitted.
+    RESTORE = "restore"
+    #: The reconciler re-asserting what was already believed.
+    RECONCILE = "reconcile"
+
+
+@dataclass(frozen=True, slots=True)
+class Change:
+    """One transition of the believed state, and where it came from."""
+
+    origin: Origin
+    previous: State
+    current: State
+
+    def moved(self, field: str) -> bool:
+        """Whether one field differs across this change."""
+        return getattr(self.previous, field) != getattr(self.current, field)
 
 
 class ProflameDevice:
@@ -52,16 +92,19 @@ class ProflameDevice:
         #: When the auto-off timer should fire, if one is armed. Persisted so
         #: a restart cannot quietly drop it and leave the fire burning.
         self.auto_off_at: datetime | None = None
-        self._listeners: list[Callable[[], None]] = []
-        #: Anything currently driving the appliance on its own, by name, with
-        #: the callback that makes it stop. The thermostat registers while it
-        #: is regulating.
+        self._listeners: list[Callable[[Change], None]] = []
+        #: Anything holding a standing request on the appliance, by name, with
+        #: the callback that withdraws it and a predicate saying whether it is
+        #: currently the one acting.
         #:
-        #: Two features need this and neither works without it. A timer that
-        #: only turned the fire off would be undone by the thermostat relighting
-        #: it a minute later, and a timer that disarmed whenever the fire went
-        #: out would vanish the first time the thermostat idled.
-        self._managers: dict[str, Callable[[], None]] = {}
+        #: The two are not the same and conflating them breaks something either
+        #: way. A yielded thermostat holds its request but is not driving: it
+        #: must still be reachable when heating is called off, or an expiring
+        #: timer cannot stop it and the next resume relights the fire. And a
+        #: thermostat that has merely reached temperature *is* driving even
+        #: though the fire is out, or a timer would vanish the moment the room
+        #: got warm.
+        self._managers: dict[str, tuple[Callable[[], None], Callable[[], bool]]] = {}
         self._store = Store[dict[str, Any]](hass, _STORE_VERSION, f"{entry_id}_state")
 
     async def async_load(self) -> None:
@@ -89,7 +132,9 @@ class ProflameDevice:
                 self.auto_off_at = dt_util.parse_datetime(deadline)
 
     @callback
-    def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+    def async_add_listener(
+        self, listener: Callable[[Change], None]
+    ) -> Callable[[], None]:
         """Subscribe to state changes, returning an unsubscribe."""
         self._listeners.append(listener)
 
@@ -122,7 +167,9 @@ class ProflameDevice:
             # every bit as much the believed state as what we sent ourselves,
             # and forgetting it across a restart would leave the next command
             # built on a stale belief.
-            self.hass.async_create_task(self._async_adopt(decoded.state))
+            self.hass.async_create_task(
+                self._async_adopt(decoded.state, Origin.HANDSET)
+            )
 
         return async_dispatcher_connect(
             self.hass, SIGNAL_RX_FRAME.format(transmitter_entry_id), handle_frame
@@ -130,20 +177,24 @@ class ProflameDevice:
 
     @property
     def managed(self) -> bool:
-        """Whether something is driving the appliance by itself right now.
+        """Whether something is *acting on* the appliance by itself right now.
 
         A fire that is out but managed is idle, not finished — which is the
         difference between the thermostat pausing and somebody switching the
-        fireplace off.
+        fireplace off. A holder that has yielded does not count: it is waiting,
+        not acting.
         """
-        return bool(self._managers)
+        return any(driving() for _, driving in self._managers.values())
 
     @callback
     def async_register_manager(
-        self, name: str, stop: Callable[[], None]
+        self,
+        name: str,
+        stop: Callable[[], None],
+        driving: Callable[[], bool],
     ) -> Callable[[], None]:
-        """Declare that something is driving the appliance, and how to stop it."""
-        self._managers[name] = stop
+        """Declare a standing request, how to withdraw it, and whether it acts."""
+        self._managers[name] = (stop, driving)
         self._notify()
 
         def unregister() -> None:
@@ -159,14 +210,14 @@ class ProflameDevice:
         would simply light it again. Anything that means "stop heating" rather
         than "off for now" has to come through here.
         """
-        for stop in list(self._managers.values()):
+        for stop, _ in list(self._managers.values()):
             stop()
         self._managers.clear()
         self._notify()
         if self.state.power:
-            await self.async_set(power=False)
+            await self.async_set(Origin.TIMER, power=False)
 
-    async def async_set(self, **changes: object) -> None:
+    async def async_set(self, origin: Origin, **changes: object) -> None:
         """Change some fields and transmit the whole resulting state.
 
         Every command clears the thermostat bit. Home Assistant driving the
@@ -183,7 +234,7 @@ class ProflameDevice:
         # when one of them does something surprising, the first question is
         # always which one, and the log has to be able to answer it.
         changed = ", ".join(f"{name}={value}" for name, value in sorted(changes.items()))
-        _LOGGER.info("commanding %s (changed: %s)", target, changed or "nothing")
+        _LOGGER.info("commanding %s from %s (changed: %s)", target, origin, changed or "nothing")
         await async_send_command(self.hass, self.transmitter, command)
 
         await self._async_adopt(target)
@@ -193,11 +244,12 @@ class ProflameDevice:
         self.auto_off_at = deadline
         await self._async_save()
 
-    async def _async_adopt(self, state: State) -> None:
-        """Believe this state, remember it, and tell the entities."""
+    async def _async_adopt(self, state: State, origin: Origin) -> None:
+        """Believe this state, remember it, and tell the entities why."""
+        change = Change(origin=origin, previous=self.state, current=state)
         self.state = state
         await self._async_save()
-        self._notify()
+        self._notify(change)
 
     async def _async_save(self) -> None:
         state = self.state
@@ -216,6 +268,14 @@ class ProflameDevice:
         )
 
     @callback
-    def _notify(self) -> None:
+    def _notify(self, change: Change | None = None) -> None:
+        """Tell the entities what happened.
+
+        A change with no transition — a manager registering, say — reports
+        itself as a reconcile of the current state, since that is exactly what
+        it is from a listener's point of view: nothing moved.
+        """
+        if change is None:
+            change = Change(Origin.RECONCILE, self.state, self.state)
         for listener in list(self._listeners):
-            listener()
+            listener(change)

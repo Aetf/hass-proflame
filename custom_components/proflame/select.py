@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 
 from . import ProflameConfigEntry
 from .const import AUTO_OFF_NONE, AUTO_OFF_OPTIONS
+from .device import Origin
 from .entity import ProflameEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ class ProflamePilotMode(ProflameEntity, SelectEntity):
     @override
     async def async_select_option(self, option: str) -> None:
         """Switch the pilot mode."""
-        await self.device.async_set(pilot=option == CONTINUOUS)
+        await self.device.async_set(Origin.USER, pilot=option == CONTINUOUS)
 
 
 class ProflameAutoOff(ProflameEntity, SelectEntity):
@@ -150,7 +151,7 @@ class ProflameAutoOff(ProflameEntity, SelectEntity):
         self.async_on_remove(self.device.async_add_listener(self._fire_state_changed))
 
     @callback
-    def _fire_state_changed(self) -> None:
+    def _fire_state_changed(self, _change: Any) -> None:
         """Disarm when the fireplace is finished with, not merely idle.
 
         A timer left armed after the fire was already out would put out

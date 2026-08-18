@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProflameConfigEntry
+from .device import Origin
 from .entity import ProflameEntity
 
 
@@ -40,7 +41,7 @@ class ProflamePower(ProflameEntity, SwitchEntity):
     @override
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Light the fire, at whatever level it was left at."""
-        await self.device.async_set(power=True)
+        await self.device.async_set(Origin.USER, power=True)
 
     @override
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -49,4 +50,4 @@ class ProflamePower(ProflameEntity, SwitchEntity):
         The levels ride along unchanged, which is what the handset does too:
         the appliance comes back at the flame, blower and light it had.
         """
-        await self.device.async_set(power=False)
+        await self.device.async_set(Origin.USER, power=False)

@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProflameConfigEntry
+from .device import Origin
 from .entity import ProflameEntity
 from .protocol import MAX_LEVEL
 
@@ -60,9 +61,9 @@ class ProflameLight(ProflameEntity, LightEntity):
             level = max(1, min(MAX_LEVEL, math.ceil(brightness * MAX_LEVEL / 255)))
         else:
             level = self.device.state.light or MAX_LEVEL
-        await self.device.async_set(light=level)
+        await self.device.async_set(Origin.USER, light=level)
 
     @override
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn it off."""
-        await self.device.async_set(light=0)
+        await self.device.async_set(Origin.USER, light=0)

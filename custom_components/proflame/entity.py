@@ -9,7 +9,7 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import DOMAIN
-from .device import ProflameDevice
+from .device import Change, ProflameDevice
 
 
 class ProflameEntity(Entity):
@@ -47,12 +47,12 @@ class ProflameEntity(Entity):
         return state is not None and state.state != STATE_UNAVAILABLE
 
     @callback
-    def _handle_device_update(self) -> None:
+    def _handle_device_update(self, change: Change) -> None:
         """React to the believed state changing.
 
-        Overridable: most entities only need to redraw, but the thermostat
-        also has to notice when something else has moved the flame out from
-        under it.
+        Overridable: most entities only need to redraw, but the thermostat and
+        the auto-off timer both have to know *who* caused the change, which is
+        why it is carried rather than worked out from the values.
         """
         self.async_write_ha_state()
 
