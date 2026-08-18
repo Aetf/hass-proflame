@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 
@@ -21,6 +21,7 @@ from .const import (
     CONF_SERIAL2,
     CONF_TRANSMITTER,
     CONF_VERSION,
+    DOMAIN,
 )
 from .device import ProflameDevice
 from .protocol import FCC_FREQUENCY, Remote
@@ -31,6 +32,7 @@ PLATFORMS: list[Platform] = [
     Platform.FAN,
     Platform.LIGHT,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.SWITCH,
 ]
 
@@ -43,6 +45,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProflameConfigEntry) -> 
         # Stored as a registry id so that renaming the transmitter does not
         # break the link; if it has been deleted there is nothing to send with.
         raise ConfigEntryNotReady("the configured transmitter no longer exists")
+
+    _async_remove_stale_entities(hass, entry)
 
     device = ProflameDevice(
         hass,
@@ -72,3 +76,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProflameConfigEntry) -> 
 async def async_unload_entry(hass: HomeAssistant, entry: ProflameConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+@callback
+def _async_remove_stale_entities(hass: HomeAssistant, entry: ProflameConfigEntry) -> None:
+    """Drop entities this integration no longer creates.
+
+    The pilot was a switch before it became a select. Without this its old
+    entity lingers in the registry as a permanently unavailable leftover, which
+    looks like a fault rather than a rename.
+    """
+    registry = er.async_get(hass)
+    for domain, key in ((Platform.SWITCH, "continuous_pilot"),):
+        unique_id = f"{entry.entry_id}_{key}"
+        if (entity_id := registry.async_get_entity_id(domain, DOMAIN, unique_id)) is not None:
+            registry.async_remove(entity_id)

@@ -1,0 +1,22 @@
+{
+  "entity": {
+    "switch": {
+      "fireplace": {
+        "default": "mdi:fireplace",
+        "state": {
+          "off": "mdi:fireplace-off"
+        }
+      }
+    },
+    "number": {
+      "flame": {
+        "default": "mdi:fire"
+      }
+    },
+    "select": {
+      "pilot_mode": {
+        "default": "mdi:candle"
+      }
+    }
+  }
+}

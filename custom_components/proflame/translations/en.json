@@ -26,14 +26,6 @@
     }
   },
   "entity": {
-    "switch": {
-      "fireplace": {
-        "name": null
-      },
-      "continuous_pilot": {
-        "name": "Continuous pilot"
-      }
-    },
     "number": {
       "flame": {
         "name": "Flame"
@@ -47,6 +39,20 @@
     "light": {
       "accent_light": {
         "name": "Accent light"
+      }
+    },
+    "switch": {
+      "fireplace": {
+        "name": null
+      }
+    },
+    "select": {
+      "pilot_mode": {
+        "name": "Pilot mode",
+        "state": {
+          "continuous": "Continuous (CPI)",
+          "intermittent": "Intermittent (IPI)"
+        }
       }
     }
   }
