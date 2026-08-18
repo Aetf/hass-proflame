@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Choose a transmitter",
+        "description": "Which radio should talk to the fireplace, and on which band. 315 MHz is the North American variant; 433.92 MHz is the European one.",
+        "data": {
+          "frequency": "Band",
+          "transmitter": "Transmitter"
+        }
+      },
+      "learn": {
+        "title": "Press a button on the handset",
+        "description": "Press any button on the fireplace remote now, within reach of the receiver. Its identity and checksum constants are read from that one frame, so nothing has to be typed in. This changes nothing about the appliance \u2014 the button does what it always does."
+      }
+    },
+    "error": {
+      "no_frame": "Nothing was heard. Check that the receiver is listening on the right band and is within range of the handset, then press a button again."
+    },
+    "abort": {
+      "no_transmitters": "No radio frequency transmitters are set up. Add one first, such as HackRF Proxy.",
+      "no_compatible_transmitters": "No transmitter can reach 315 or 433.92 MHz with OOK.",
+      "transmitter_unusable": "That transmitter cannot be used; it has no config entry to receive through.",
+      "already_configured": "This handset is already set up."
+    }
+  },
+  "entity": {
+    "switch": {
+      "fireplace": {
+        "name": null
+      },
+      "continuous_pilot": {
+        "name": "Continuous pilot"
+      }
+    },
+    "number": {
+      "flame": {
+        "name": "Flame"
+      }
+    },
+    "fan": {
+      "blower": {
+        "name": "Blower"
+      }
+    },
+    "light": {
+      "accent_light": {
+        "name": "Accent light"
+      }
+    }
+  }
+}

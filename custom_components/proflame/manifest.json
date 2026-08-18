@@ -1,0 +1,13 @@
+{
+  "domain": "proflame",
+  "name": "SIT Proflame Fireplace",
+  "codeowners": ["@aetf"],
+  "config_flow": true,
+  "dependencies": ["radio_frequency"],
+  "documentation": "https://github.com/aetf/hackrf-proxy",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/aetf/hackrf-proxy/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

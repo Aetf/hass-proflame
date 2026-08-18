@@ -1,0 +1,84 @@
+"""Switches for the fireplace: the fire itself, and the pilot mode."""
+
+from __future__ import annotations
+
+from typing import Any, override
+
+from homeassistant.components.switch import SwitchEntity
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from . import ProflameConfigEntry
+from .entity import ProflameEntity
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ProflameConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up the fireplace's switches."""
+    device = entry.runtime_data
+    async_add_entities([ProflamePower(device), ProflameContinuousPilot(device)])
+
+
+class ProflamePower(ProflameEntity, SwitchEntity):
+    """The fire itself."""
+
+    _attr_name = None
+
+    def __init__(self, device: Any) -> None:
+        """Initialize the switch."""
+        super().__init__(device, "fireplace")
+
+    @property
+    @override
+    def is_on(self) -> bool:
+        """Whether the fire is believed to be lit."""
+        return self.device.state.power
+
+    @override
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Light the fire, at whatever level it was left at."""
+        await self.device.async_set(power=True)
+
+    @override
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Put the fire out.
+
+        The levels ride along unchanged, which is what the handset does too:
+        the appliance comes back at the flame, blower and light it had.
+        """
+        await self.device.async_set(power=False)
+
+
+class ProflameContinuousPilot(ProflameEntity, SwitchEntity):
+    """Continuous pilot ignition, as opposed to intermittent.
+
+    A configuration setting rather than a control — it changes how the
+    appliance behaves between uses, not what it is doing now — so it lives
+    under the device's configuration section rather than among the controls.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, device: Any) -> None:
+        """Initialize the switch."""
+        super().__init__(device, "continuous_pilot")
+
+    @property
+    @override
+    def is_on(self) -> bool:
+        """Whether the pilot is believed to be continuous."""
+        return self.device.state.pilot
+
+    @override
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Switch to a continuously burning pilot."""
+        await self.device.async_set(pilot=True)
+
+    @override
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Switch to intermittent ignition."""
+        await self.device.async_set(pilot=False)
