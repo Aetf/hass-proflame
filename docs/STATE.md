@@ -116,7 +116,7 @@ these.
 | S4 | Home Assistant starts and the belief is restored. |
 | S5 | The transmitter becomes unavailable, or comes back. |
 | S6 | A transmission fails. |
-| S7 | The reconcile interval elapses, or the transmitter becomes usable after a restart. |
+| S7 | Nothing has been transmitted successfully for the reconcile interval. |
 
 ## Control ownership: every edge
 
@@ -197,9 +197,21 @@ by the air but not by the appliance, a handset press during a radio outage, the
 appliance losing mains power. There is no way to ask it, so the only way to
 close the gap is to say it again.
 
-So the belief is re-transmitted periodically, and once at startup as soon as
-the transmitter is usable. This is what makes Home Assistant the source of
-truth rather than merely a hopeful narrator.
+So the belief is re-transmitted whenever **nothing has been transmitted
+successfully for the reconcile interval**. This is what makes Home Assistant
+the source of truth rather than merely a hopeful narrator.
+
+Timing it from the last success rather than from a fixed clock is what keeps it
+from talking over itself: a fireplace being actively used resets the timer with
+every command and never reconciles at all, and one nobody has touched
+reconciles exactly as often as the interval says. No separate rule is needed to
+suppress a re-assertion that has just been made redundant — the mechanism
+cannot produce one.
+
+A restart is the same event by construction: nothing has been transmitted since
+Home Assistant came up, so the first interval after the transmitter becomes
+usable reconciles. That is the case the whole mechanism is for, and it needs no
+special path.
 
 A re-assertion carries origin `reconcile` and transmits the state already
 believed, so it produces no change and nothing downstream reacts to it. It is
@@ -230,9 +242,14 @@ also the cheapest: it is the assertion that cannot do harm.
 | event | effect |
 |-------|--------|
 | S7, transmitter usable | Transmit the believed state. No state change, no listeners. |
-| S7, transmitter unavailable | Skip. Try again next interval; the belief is untouched. |
-| S7, a command was sent very recently | Skip. The appliance has just been told. |
-| S4 restore, then transmitter becomes usable | Reconcile once, immediately. This is the case the whole mechanism is for. |
+| S7, transmitter unavailable | Skip, and leave the clock running so the next interval tries again. |
+| any successful transmission | Restart the interval. |
+| a failed transmission | Leave the clock alone; the appliance was not reached. |
+
+The interval is configurable, in the same options flow as the temperature
+sensor, and can be turned off. The default is fifteen minutes: about a second
+of air time each, which bounds how long a divergence can go unnoticed to a
+quarter of an hour for a tenth of a percent of the radio's time.
 
 ## Observability
 
@@ -244,6 +261,7 @@ every bug above and could not be answered.
 | `binary_sensor`, diagnostic | Whether anything is driving the appliance by itself. Exists already. |
 | `sensor`, diagnostic | Transmissions that failed, counted since startup. |
 | `sensor`, diagnostic, timestamp | When the last one failed, with the reason as an attribute. |
+| `sensor`, diagnostic, timestamp | When the last one succeeded. This is also what the reconciler counts from, so it says when the next re-assertion is due. |
 
 A failed transmission leaves the belief untouched (invariant 2), which is
 correct and also silent: without these, a radio that has been refusing
