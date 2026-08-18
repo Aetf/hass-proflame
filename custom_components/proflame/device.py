@@ -101,8 +101,11 @@ class ProflameDevice:
             if decoded.state == self.state:
                 return
             _LOGGER.debug("following the handset: %s", decoded.state)
-            self.state = decoded.state
-            self._notify()
+            # Persisted like any other change. What the handset tells us is
+            # every bit as much the believed state as what we sent ourselves,
+            # and forgetting it across a restart would leave the next command
+            # built on a stale belief.
+            self.hass.async_create_task(self._async_adopt(decoded.state))
 
         return async_dispatcher_connect(
             self.hass, SIGNAL_RX_FRAME.format(transmitter_entry_id), handle_frame
@@ -123,17 +126,21 @@ class ProflameDevice:
         _LOGGER.debug("transmitting %s", target)
         await async_send_command(self.hass, self.transmitter, command)
 
-        self.state = target
+        await self._async_adopt(target)
+
+    async def _async_adopt(self, state: State) -> None:
+        """Believe this state, remember it, and tell the entities."""
+        self.state = state
         await self._store.async_save(
             {
-                "power": int(target.power),
-                "flame": target.flame,
-                "fan": target.fan,
-                "light": target.light,
-                "thermostat": int(target.thermostat),
-                "aux": int(target.aux),
-                "front": int(target.front),
-                "pilot": int(target.pilot),
+                "power": int(state.power),
+                "flame": state.flame,
+                "fan": state.fan,
+                "light": state.light,
+                "thermostat": int(state.thermostat),
+                "aux": int(state.aux),
+                "front": int(state.front),
+                "pilot": int(state.pilot),
             }
         )
         self._notify()
