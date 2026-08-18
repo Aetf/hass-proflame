@@ -30,10 +30,12 @@ from .const import (
     CONF_TEMPERATURE_SENSOR,
     CONF_KEY1,
     CONF_KEY2,
+    CONF_RECONCILE_INTERVAL,
     CONF_SERIAL1,
     CONF_SERIAL2,
     CONF_TRANSMITTER,
     CONF_VERSION,
+    DEFAULT_RECONCILE_INTERVAL,
     DOMAIN,
     LEARN_TIMEOUT,
     SIGNAL_RX_FRAME,
@@ -253,16 +255,18 @@ class ProflameOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Choose the temperature source for the thermostat.
+        """Choose the temperature source, and how often to re-assert the state.
 
-        Leaving it empty removes the thermostat entirely rather than leaving a
-        climate entity that cannot read a temperature.
+        Leaving the sensor empty removes the thermostat entirely rather than
+        leaving a climate entity that cannot read a temperature.
         """
         if user_input is not None:
-            sensor = user_input.get(CONF_TEMPERATURE_SENSOR) or None
-            return self.async_create_entry(
-                data={CONF_TEMPERATURE_SENSOR: sensor} if sensor else {}
-            )
+            options: dict[str, Any] = {
+                CONF_RECONCILE_INTERVAL: int(user_input[CONF_RECONCILE_INTERVAL])
+            }
+            if sensor := user_input.get(CONF_TEMPERATURE_SENSOR):
+                options[CONF_TEMPERATURE_SENSOR] = sensor
+            return self.async_create_entry(data=options)
 
         return self.async_show_form(
             step_id="init",
@@ -273,7 +277,19 @@ class ProflameOptionsFlow(OptionsFlow):
                             selector.EntitySelectorConfig(
                                 domain="sensor", device_class="temperature"
                             )
-                        )
+                        ),
+                        vol.Required(
+                            CONF_RECONCILE_INTERVAL,
+                            default=DEFAULT_RECONCILE_INTERVAL,
+                        ): selector.NumberSelector(
+                            selector.NumberSelectorConfig(
+                                min=0,
+                                max=180,
+                                step=5,
+                                unit_of_measurement="min",
+                                mode=selector.NumberSelectorMode.BOX,
+                            )
+                        ),
                     }
                 ),
                 self.config_entry.options,

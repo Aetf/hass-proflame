@@ -36,6 +36,17 @@
           "off": "mdi:robot-off-outline"
         }
       }
+    },
+    "sensor": {
+      "last_transmission": {
+        "default": "mdi:radio-tower"
+      },
+      "last_failure": {
+        "default": "mdi:radio-tower"
+      },
+      "failed_transmissions": {
+        "default": "mdi:alert-circle-outline"
+      }
     }
   }
 }

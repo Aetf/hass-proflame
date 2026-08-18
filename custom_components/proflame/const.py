@@ -30,3 +30,11 @@ AUTO_OFF_OPTIONS: dict[str, int] = {
     "3_hours": 180,
     "4_hours": 240,
 }
+
+#: How long the radio may stay quiet before the believed state is transmitted
+#: again, in minutes. Zero disables it. Fifteen minutes is roughly a hundred
+#: extra transmissions a day — negligible air time, and short enough that a
+#: fireplace which has drifted out of step is corrected within one visit to the
+#: room rather than one evening.
+CONF_RECONCILE_INTERVAL = "reconcile_interval"
+DEFAULT_RECONCILE_INTERVAL = 15

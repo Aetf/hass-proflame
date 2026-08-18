@@ -9,6 +9,7 @@ from typing import Any, override
 from homeassistant.components.select import SelectEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.util import dt as dt_util
@@ -124,10 +125,28 @@ class ProflameAutoOff(ProflameEntity, SelectEntity):
         """
         _LOGGER.info("auto-off reached; shutting the fireplace down")
         self._cancel = None
+        try:
+            await self.device.async_shut_down()
+        except HomeAssistantError as err:
+            # Disarming first would be the worst of both: the radio is out, the
+            # fire is still lit, and the one thing meant to put it out has
+            # deleted itself. So the deadline stands, in the past, and
+            # [`Self._transmitter_changed`] tries again when there is a radio.
+            _LOGGER.warning("auto-off could not be transmitted, still armed: %s", err)
+            self.async_write_ha_state()
+            return
         self._option = AUTO_OFF_NONE
         await self.device.async_set_auto_off(None)
-        await self.device.async_shut_down()
         self.async_write_ha_state()
+
+    @override
+    @callback
+    def _transmitter_changed(self, event: object) -> None:
+        """Retry an expiry that the radio was not there for."""
+        super()._transmitter_changed(event)
+        deadline = self.device.auto_off_at
+        if deadline is not None and deadline <= dt_util.utcnow() and self.available:
+            self.hass.async_create_task(self._fired(dt_util.utcnow()))
 
     @override
     async def async_added_to_hass(self) -> None:

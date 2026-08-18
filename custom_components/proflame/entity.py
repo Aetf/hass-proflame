@@ -61,12 +61,19 @@ class ProflameEntity(Entity):
         await super().async_added_to_hass()
         self.async_on_remove(self.device.async_add_listener(self._handle_device_update))
 
-        @callback
-        def transmitter_changed(_event: object) -> None:
-            self.async_write_ha_state()
-
         self.async_on_remove(
             async_track_state_change_event(
-                self.hass, [self.device.transmitter], transmitter_changed
+                self.hass, [self.device.transmitter], self._transmitter_changed
             )
         )
+
+    @callback
+    def _transmitter_changed(self, _event: object) -> None:
+        """React to the radio appearing or going away.
+
+        Overridable for the same reason `_handle_device_update` is: a radio
+        coming back is the moment for anything that could not be transmitted to
+        try again, and waiting for the next unrelated event to notice is how a
+        lost command stays lost.
+        """
+        self.async_write_ha_state()

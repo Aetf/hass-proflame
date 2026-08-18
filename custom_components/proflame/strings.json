@@ -31,7 +31,7 @@
       "reconfigure_successful": "The fireplace now uses the new transmitter."
     },
     "progress": {
-      "listening": "Listening. Press any button on the fireplace handset now \u2014 this only reads what the handset transmits and changes nothing about the appliance."
+      "listening": "Listening. Press any button on the fireplace handset now — this only reads what the handset transmits and changes nothing about the appliance."
     }
   },
   "entity": {
@@ -88,15 +88,30 @@
           "on": "Thermostat driving"
         }
       }
+    },
+    "sensor": {
+      "last_transmission": {
+        "name": "Last transmission"
+      },
+      "last_failure": {
+        "name": "Last failed transmission"
+      },
+      "failed_transmissions": {
+        "name": "Failed transmissions"
+      }
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Thermostat",
-        "description": "Pick a temperature sensor and this fireplace gains a thermostat that regulates the flame from it. Leave it empty for no thermostat.\n\nThe thermostat only decides how hot; it does not decide whether the fire should be lit at all. Conditions like nobody being home belong in an automation, which is where they can see the rest of the house.",
+        "title": "Fireplace settings",
+        "description": "Pick a temperature sensor and this fireplace gains a thermostat that regulates the flame from it. Leave it empty for no thermostat.\n\nThe thermostat only decides how hot; it does not decide whether the fire should be lit at all. Conditions like nobody being home belong in an automation, which is where they can see the rest of the house.\n\nThe fireplace cannot be asked what state it is in, so Home Assistant re-sends the state it believes whenever the radio has been quiet for the interval below. That is what corrects a command the appliance missed, or a handset press heard by nobody. Set it to 0 to never re-send.",
         "data": {
-          "temperature_sensor": "Temperature sensor"
+          "temperature_sensor": "Temperature sensor",
+          "reconcile_interval": "Re-send the state after"
+        },
+        "data_description": {
+          "reconcile_interval": "Minutes of radio silence before the believed state is transmitted again."
         }
       }
     }

@@ -7,6 +7,8 @@ or an ESPHome node with a CC1101 beside the fireplace.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
@@ -17,13 +19,16 @@ from .const import (
     CONF_FREQUENCY,
     CONF_KEY1,
     CONF_KEY2,
+    CONF_RECONCILE_INTERVAL,
     CONF_SERIAL1,
     CONF_SERIAL2,
     CONF_TRANSMITTER,
     CONF_VERSION,
+    DEFAULT_RECONCILE_INTERVAL,
     DOMAIN,
 )
 from .device import ProflameDevice
+from .reconciler import ProflameReconciler
 from .protocol import FCC_FREQUENCY, Remote
 
 type ProflameConfigEntry = ConfigEntry[ProflameDevice]
@@ -35,6 +40,7 @@ PLATFORMS: list[Platform] = [
     Platform.LIGHT,
     Platform.NUMBER,
     Platform.SELECT,
+    Platform.SENSOR,
     Platform.SWITCH,
 ]
 
@@ -73,6 +79,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProflameConfigEntry) -> 
     entry.runtime_data = device
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Started after the platforms, so that the first re-assertion has entities
+    # to update rather than landing on a device nothing is listening to.
+    reconciler = ProflameReconciler(
+        hass,
+        device,
+        timedelta(
+            minutes=entry.options.get(
+                CONF_RECONCILE_INTERVAL, DEFAULT_RECONCILE_INTERVAL
+            )
+        ),
+    )
+    entry.async_on_unload(reconciler.async_start())
     return True
 
 

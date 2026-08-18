@@ -23,6 +23,7 @@ from homeassistant.components.climate import (
 )
 from homeassistant.const import ATTR_TEMPERATURE, STATE_UNAVAILABLE, STATE_UNKNOWN, UnitOfTemperature
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 
@@ -252,7 +253,15 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
 
     async def _async_tick(self, _now: Any) -> None:
         if self._attr_hvac_mode is HVACMode.HEAT and not self._suspended:
-            await self._async_regulate()
+            try:
+                await self._async_regulate()
+            except HomeAssistantError as err:
+                # A control loop is the one caller with nobody to raise at. The
+                # device has already counted and timestamped this, and the
+                # diagnostic sensors are where it belongs; letting it escape
+                # here only produces an unhandled-task traceback once a minute
+                # for as long as the radio is out.
+                _LOGGER.warning("could not regulate: %s", err)
 
     @callback
     def _handle_device_update(self, change: Change) -> None:

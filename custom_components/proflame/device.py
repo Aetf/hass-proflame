@@ -92,6 +92,14 @@ class ProflameDevice:
         #: When the auto-off timer should fire, if one is armed. Persisted so
         #: a restart cannot quietly drop it and leave the fire burning.
         self.auto_off_at: datetime | None = None
+        #: The last transmission the radio accepted, the last that it did not,
+        #: and how many have failed. Deliberately not persisted: after a restart
+        #: nothing has been said to the appliance yet, which is exactly the
+        #: state the reconciler exists to repair.
+        self.last_success: datetime | None = None
+        self.last_failure: datetime | None = None
+        self.last_error: str | None = None
+        self.failures = 0
         self._listeners: list[Callable[[Change], None]] = []
         #: Anything holding a standing request on the appliance, by name, with
         #: the callback that withdraws it and a predicate saying whether it is
@@ -203,6 +211,26 @@ class ProflameDevice:
 
         return unregister
 
+    async def async_reconcile(self) -> None:
+        """Say the believed state again, so the appliance matches it.
+
+        Nothing keeps the *appliance* correct on its own — a command the air
+        carried but the appliance did not act on, a handset press during a
+        receiver outage, a mains cut — and it cannot be asked. Saying it again
+        is the only way to close a gap that has already opened.
+
+        Re-asserting is not symmetric, and that asymmetry is the reason this is
+        defensible. `power = off` can only ever extinguish, and the error it
+        corrects is a fire burning that Home Assistant believes is out.
+        `power = on` can relight a gas appliance somebody deliberately put out,
+        if the belief has gone stale. What bounds that is the receiver: a
+        transmitter that can reconcile is also listening, so a stale belief
+        needs a radio in range of the fireplace but not of the handset. See
+        docs/STATE.md.
+        """
+        _LOGGER.info("reconciling: re-asserting %s", self.state)
+        await self.async_set(Origin.RECONCILE, thermostat=self.state.thermostat)
+
     async def async_shut_down(self) -> None:
         """Stop everything driving the appliance, then put the fire out.
 
@@ -220,13 +248,19 @@ class ProflameDevice:
     async def async_set(self, origin: Origin, **changes: object) -> None:
         """Change some fields and transmit the whole resulting state.
 
-        Every command clears the thermostat bit. Home Assistant driving the
-        appliance and the handset's own thermostat driving it are two
-        controllers fighting over the same flame; if a thermostat is wanted
+        Every command clears the thermostat bit *by default*. Home Assistant
+        driving the appliance and the handset's own thermostat driving it are
+        two controllers fighting over the same flame; if a thermostat is wanted
         here, it belongs in Home Assistant with a temperature source it can
         actually read.
+
+        By default, and not unconditionally, because the reconciler has to be
+        able to say the believed state verbatim. Clearing the bit there would
+        make re-asserting a belief change it — the handset's own thermostat
+        mode, faithfully followed off the air, would be switched off a quarter
+        of an hour later by something whose whole purpose is to change nothing.
         """
-        target = self.state.evolve(thermostat=False, **changes)
+        target = self.state.evolve(**{"thermostat": False, **changes})
         command = ProflameCommand(self.remote, target, frequency=self.frequency)
 
         # At info, and naming what changed. Several things can command this
@@ -235,9 +269,22 @@ class ProflameDevice:
         # always which one, and the log has to be able to answer it.
         changed = ", ".join(f"{name}={value}" for name, value in sorted(changes.items()))
         _LOGGER.info("commanding %s from %s (changed: %s)", target, origin, changed or "nothing")
-        await async_send_command(self.hass, self.transmitter, command)
+        try:
+            await async_send_command(self.hass, self.transmitter, command)
+        except Exception as err:
+            # A radio that has been refusing everything for an hour looks
+            # exactly like a fireplace nobody has touched, so failures are
+            # counted rather than only raised. The belief is left untouched:
+            # nothing was said, so nothing changed.
+            self.failures += 1
+            self.last_failure = dt_util.utcnow()
+            self.last_error = str(err) or type(err).__name__
+            _LOGGER.warning("transmission failed (%d so far): %s", self.failures, err)
+            self._notify()
+            raise
 
-        await self._async_adopt(target)
+        self.last_success = dt_util.utcnow()
+        await self._async_adopt(target, origin)
 
     async def async_set_auto_off(self, deadline: datetime | None) -> None:
         """Remember when the fire should be put out, or that it should not."""
