@@ -79,6 +79,15 @@
       "thermostat": {
         "name": "Thermostat"
       }
+    },
+    "binary_sensor": {
+      "managed": {
+        "name": "Automatic control",
+        "state": {
+          "off": "Nobody driving",
+          "on": "Thermostat driving"
+        }
+      }
     }
   },
   "options": {

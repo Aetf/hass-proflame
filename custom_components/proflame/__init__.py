@@ -29,6 +29,7 @@ from .protocol import FCC_FREQUENCY, Remote
 type ProflameConfigEntry = ConfigEntry[ProflameDevice]
 
 PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
     Platform.CLIMATE,
     Platform.FAN,
     Platform.LIGHT,

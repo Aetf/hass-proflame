@@ -144,9 +144,11 @@ class ProflameDevice:
     ) -> Callable[[], None]:
         """Declare that something is driving the appliance, and how to stop it."""
         self._managers[name] = stop
+        self._notify()
 
         def unregister() -> None:
-            self._managers.pop(name, None)
+            if self._managers.pop(name, None) is not None:
+                self._notify()
 
         return unregister
 
@@ -160,6 +162,7 @@ class ProflameDevice:
         for stop in list(self._managers.values()):
             stop()
         self._managers.clear()
+        self._notify()
         if self.state.power:
             await self.async_set(power=False)
 

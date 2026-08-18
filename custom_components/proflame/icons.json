@@ -28,6 +28,14 @@
       "thermostat": {
         "default": "mdi:home-thermometer"
       }
+    },
+    "binary_sensor": {
+      "managed": {
+        "default": "mdi:robot",
+        "state": {
+          "off": "mdi:robot-off-outline"
+        }
+      }
     }
   }
 }
