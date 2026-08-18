@@ -279,7 +279,7 @@ every bug above and could not be answered.
 | `binary_sensor`, diagnostic | Whether anything is driving the appliance by itself. Exists already. |
 | `sensor`, diagnostic | Transmissions that failed, counted since startup. |
 | `sensor`, diagnostic, timestamp | When the last one failed, with the reason as an attribute. |
-| `sensor`, diagnostic, timestamp | When the last one succeeded. This is also what the reconciler counts from, so it says when the next re-assertion is due. |
+| `sensor`, diagnostic, timestamp | When the last one succeeded. The reconciler counts from the later of this and the failure above, so the two together say when the next re-assertion is due. |
 
 A failed transmission leaves the belief untouched (invariant 2), which is
 correct and also silent: without these, a radio that has been refusing

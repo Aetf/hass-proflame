@@ -4,7 +4,8 @@ A command that does not reach the appliance leaves no trace anywhere a person
 looks. The believed state is unchanged, so every entity still reads the way it
 did a moment ago, and a fireplace nobody has touched for an hour looks exactly
 like a radio that has been refusing everything for an hour. These make the
-difference visible, and give the reconciler's clock a face.
+difference visible, and between them show the reconciler's clock — which reads
+from whichever of the two is later, since it counts from the last attempt.
 """
 
 from __future__ import annotations
@@ -68,7 +69,11 @@ class ProflameLastSuccess(ProflameDiagnosticSensor):
     @property
     @override
     def native_value(self) -> datetime | None:
-        """The last accepted transmission, and the reconciler's clock.
+        """When the appliance was last successfully told anything.
+
+        The reconciler's clock while things are working, but not by itself: it
+        counts from the last *attempt*, so once a transmission has failed the
+        deadline runs from that failure instead. Read the later of the two.
 
         Unknown until something has been sent in this run of Home Assistant,
         which is not a fault: a restart says nothing to the appliance, and that
