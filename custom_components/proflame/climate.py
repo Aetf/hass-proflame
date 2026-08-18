@@ -93,6 +93,7 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         self._attr_hvac_mode = HVACMode.OFF
         self._attr_target_temperature = 20.0
         self._commanded_flame: int | None = None
+        self._commanded_power: bool | None = None
         self._last_command: Any = None
         #: Somebody else has the flame. The *mode* still says heat, because
         #: that is what was asked for and it has not been withdrawn; this is
@@ -160,6 +161,7 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         _LOGGER.info("told to stop; the thermostat is standing down")
         self._attr_hvac_mode = HVACMode.OFF
         self._commanded_flame = None
+        self._commanded_power = None
         self._unregister = None
         self.async_write_ha_state()
 
@@ -179,6 +181,7 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         """
         self._attr_hvac_mode = hvac_mode
         self._commanded_flame = None
+        self._commanded_power = None
         self._suspended = False
         # Before touching the appliance, not after. Anything watching for a
         # fire that goes out has to be able to tell "the thermostat is idling"
@@ -262,21 +265,42 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         changes, to `off`. Turning the mode off instead, as this used to, said
         something the user never asked for and put the fire out along with it.
         """
-        if (
-            self._attr_hvac_mode is HVACMode.HEAT
-            and not self._suspended
-            and self._commanded_flame is not None
-            and self.device.state.flame != self._commanded_flame
-        ):
-            _LOGGER.info(
-                "flame moved to %d rather than the %d asked for; yielding control "
-                "and leaving the fire alone (select heat again to resume)",
-                self.device.state.flame,
-                self._commanded_flame,
-            )
-            self._suspended = True
-            self._commanded_flame = None
-            self._sync_manager()
+        if self._attr_hvac_mode is HVACMode.HEAT and not self._suspended:
+            if (
+                self._commanded_power is not None
+                and self.device.state.power != self._commanded_power
+            ):
+                # Somebody switched the fire itself. That is a withdrawal of
+                # the request rather than a handover of the flame — "I am done
+                # with the fireplace", or "I want it lit whatever you think" —
+                # so the mode goes off, as it does when the timer expires.
+                #
+                # Not optional, either: without it the thermostat would notice
+                # a cold room a minute later and light the fire again, quietly
+                # undoing somebody who had just switched it off by hand.
+                _LOGGER.info(
+                    "the fire was switched %s by somebody else; standing down",
+                    "on" if self.device.state.power else "off",
+                )
+                self._attr_hvac_mode = HVACMode.OFF
+                self._commanded_flame = None
+                self._commanded_power = None
+                self._sync_manager()
+            elif (
+                self._commanded_flame is not None
+                and self.device.state.flame != self._commanded_flame
+            ):
+                # The flame moved but the fire stayed as it was: somebody is
+                # driving the level, not ending the heating. A handover.
+                _LOGGER.info(
+                    "flame moved to %d rather than the %d asked for; yielding control "
+                    "and leaving the fire alone (select heat again to resume)",
+                    self.device.state.flame,
+                    self._commanded_flame,
+                )
+                self._suspended = True
+                self._commanded_flame = None
+                self._sync_manager()
         self.async_write_ha_state()
 
     async def _async_regulate(self, *, force: bool = False) -> None:
@@ -310,6 +334,7 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
 
         self._last_command = now
         self._commanded_flame = wanted_flame
+        self._commanded_power = wanted_power
         _LOGGER.debug(
             "%.1f°C against a target of %.1f: power=%s flame=%d",
             current,
