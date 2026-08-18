@@ -237,3 +237,76 @@ class ProflameCommand(RadioFrequencyCommand):
     def __repr__(self) -> str:
         """Return a representation naming the state, which is what matters."""
         return f"ProflameCommand({self.state}, repeat={self.repeat_count})"
+
+
+@dataclass(frozen=True, slots=True)
+class DecodedFrame:
+    """What one received burst turned out to be."""
+
+    remote: Remote
+    state: State
+
+
+def decode_frame(timings: list[int]) -> DecodedFrame | None:
+    """Decode a burst the daemon received, or None if it is not a clean frame.
+
+    Deliberately all-or-nothing. `proxyd/src/proflame.rs` reports partial
+    results because protocol analysis wants them; Home Assistant does not, and
+    acting on a frame that failed parity would be worse than ignoring it.
+
+    A burst always ends on a mark — a frame's final space has no terminating
+    edge on air — so the tail is restored from the known block length rather
+    than treated as an error.
+    """
+    symbols: list[bool] = []
+    for value in timings:
+        count = max(1, round(abs(value) / SYMBOL_US))
+        symbols += [value > 0] * count
+    while len(symbols) % BLOCK_SYMBOLS:
+        symbols.append(False)
+
+    if len(symbols) // BLOCK_SYMBOLS != FRAME_BLOCKS:
+        return None
+
+    blocks: list[int] = []
+    for index in range(FRAME_BLOCKS):
+        block = symbols[index * BLOCK_SYMBOLS : (index + 1) * BLOCK_SYMBOLS]
+        # Sync: three marks and a space, a deliberate Manchester violation.
+        if block[:4] != [True, True, True, False]:
+            return None
+
+        bits: list[bool] = []
+        for pair_start in range(4, BLOCK_SYMBOLS, 2):
+            pair = block[pair_start : pair_start + 2]
+            if pair == [True, False]:
+                bits.append(True)
+            elif pair == [False, True]:
+                bits.append(False)
+            else:
+                return None
+
+        if not bits[10]:  # stop bit
+            return None
+        if sum(bits[:10]) % 2:  # even parity over data, flag and parity
+            return None
+        if bits[8] != (index == 0):  # start-of-frame flag
+            return None
+
+        value = 0
+        for bit in bits[:8]:
+            value = (value << 1) | int(bit)
+        blocks.append(value)
+
+    serial1, serial2, version, cmd1, cmd2, checksum1, checksum2 = blocks
+    return DecodedFrame(
+        remote=Remote.from_frame(
+            serial1=serial1,
+            serial2=serial2,
+            version=version,
+            cmd1=cmd1,
+            cmd2=cmd2,
+            checksum1=checksum1,
+            checksum2=checksum2,
+        ),
+        state=State.from_commands(cmd1, cmd2),
+    )
