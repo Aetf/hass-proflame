@@ -15,6 +15,7 @@ import logging
 from typing import Any, override
 
 from homeassistant.components.climate import (
+    FAN_OFF,
     ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
@@ -72,9 +73,14 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.FAN_MODE
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
     )
+    # The blower belongs on a thermostat: it is part of getting heat into the
+    # room. The accent light does not, and has no place here — it is not
+    # climate, and there is a light entity for it.
+    _attr_fan_modes = [FAN_OFF, *(str(level) for level in range(1, MAX_LEVEL + 1))]
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 5
     _attr_max_temp = 30
@@ -111,15 +117,37 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
 
     @override
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """Start or stop regulating."""
+        """Start or stop regulating.
+
+        Stopping does **not** put the fire out. This thermostat manages the
+        appliance, it does not own it: there is a switch for the fire, and
+        several other things can command it. Turning the manager off and
+        having the fire go out with it was surprising in exactly the way a
+        gas appliance should not be — and it made standing down, which is
+        supposed to be a quiet handover, into an act.
+        """
         self._attr_hvac_mode = hvac_mode
-        if hvac_mode is HVACMode.OFF:
-            self._commanded_flame = None
-            if self.device.state.power:
-                await self.device.async_set(power=False)
-        else:
-            await self._async_regulate()
+        self._commanded_flame = None
+        if hvac_mode is not HVACMode.OFF:
+            await self._async_regulate(force=True)
         self.async_write_ha_state()
+
+    @property
+    @override
+    def fan_mode(self) -> str:
+        """The blower speed, as the thermostat sees it."""
+        level = self.device.state.fan
+        return FAN_OFF if level == 0 else str(level)
+
+    @override
+    async def async_set_fan_mode(self, fan_mode: str) -> None:
+        """Set the blower speed.
+
+        Passed straight through rather than regulated: the blower moves heat
+        that is already there, so how hard it should run is a preference
+        rather than something to solve for.
+        """
+        await self.device.async_set(fan=0 if fan_mode == FAN_OFF else int(fan_mode))
 
     @override
     async def async_set_temperature(self, **kwargs: Any) -> None:
@@ -166,8 +194,9 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
             and self._commanded_flame is not None
             and self.device.state.flame != self._commanded_flame
         ):
-            _LOGGER.debug(
-                "flame moved to %d, which is not the %d asked for; standing down",
+            _LOGGER.info(
+                "flame moved to %d, which is not the %d asked for; standing down "
+                "and leaving the fire as it is",
                 self.device.state.flame,
                 self._commanded_flame,
             )

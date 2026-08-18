@@ -131,7 +131,12 @@ class ProflameDevice:
         target = self.state.evolve(thermostat=False, **changes)
         command = ProflameCommand(self.remote, target, frequency=self.frequency)
 
-        _LOGGER.debug("transmitting %s", target)
+        # At info, and naming what changed. Several things can command this
+        # appliance — the switch, the slider, the thermostat, a timer — and
+        # when one of them does something surprising, the first question is
+        # always which one, and the log has to be able to answer it.
+        changed = ", ".join(f"{name}={value}" for name, value in sorted(changes.items()))
+        _LOGGER.info("commanding %s (changed: %s)", target, changed or "nothing")
         await async_send_command(self.hass, self.transmitter, command)
 
         await self._async_adopt(target)
