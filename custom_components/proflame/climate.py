@@ -10,6 +10,7 @@ placed one than the handset's.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 import logging
 from typing import Any, override
@@ -26,6 +27,7 @@ from homeassistant.core import Event, EventStateChangedData, HomeAssistant, call
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
 from . import ProflameConfigEntry
 from .const import CONF_TEMPERATURE_SENSOR
@@ -55,6 +57,32 @@ _HYSTERESIS = 0.3
 _DEGREES_PER_LEVEL = 0.5
 
 
+@dataclass
+class ThermostatData(ExtraStoredData):
+    """What the thermostat has to remember across a restart.
+
+    The mode and the target are the request, and losing them silently ends
+    heating while leaving whatever was lit burning unmanaged. The yield goes
+    with them: restoring a thermostat to `heat` without remembering that
+    somebody had taken the flame off it would have it resume at the next tick
+    and override a level a person had set by hand, which is the exact surprise
+    the yield exists to prevent.
+    """
+
+    hvac_mode: str
+    target_temperature: float | None
+    suspended: bool
+
+    @override
+    def as_dict(self) -> dict[str, Any]:
+        """Serialize."""
+        return {
+            "hvac_mode": self.hvac_mode,
+            "target_temperature": self.target_temperature,
+            "suspended": self.suspended,
+        }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ProflameConfigEntry,
@@ -69,7 +97,7 @@ async def async_setup_entry(
     async_add_entities([ProflameThermostat(entry.runtime_data, sensor)])
 
 
-class ProflameThermostat(ProflameEntity, ClimateEntity):
+class ProflameThermostat(ProflameEntity, ClimateEntity, RestoreEntity):
     """Regulates the flame from an external temperature sensor."""
 
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
@@ -227,10 +255,21 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
             await self._async_regulate(force=True)
         self.async_write_ha_state()
 
+    @property
+    @override
+    def extra_restore_state_data(self) -> ThermostatData:
+        """What to write down before shutting."""
+        return ThermostatData(
+            hvac_mode=str(self._attr_hvac_mode),
+            target_temperature=self._attr_target_temperature,
+            suspended=self._suspended,
+        )
+
     @override
     async def async_added_to_hass(self) -> None:
-        """Watch the clock, the sensor, and the appliance."""
+        """Restore the request, then watch the clock, the sensor and the appliance."""
         await super().async_added_to_hass()
+        await self._async_restore()
 
         @callback
         def sensor_changed(_event: Event[EventStateChangedData]) -> None:
@@ -250,6 +289,35 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
                 self._unregister = None
 
         self.async_on_remove(deregister)
+
+    async def _async_restore(self) -> None:
+        """Pick up the request this thermostat was holding when it stopped.
+
+        Nothing is transmitted here. If the room needs heat the next tick says
+        so a minute later, and starting up is already noisy enough on a shared
+        radio — the reconciler transmits at startup as it is.
+        """
+        if (stored := await self.async_get_last_extra_data()) is None:
+            return
+        data = stored.as_dict()
+        try:
+            self._attr_hvac_mode = HVACMode(data["hvac_mode"])
+            target = data["target_temperature"]
+            self._attr_target_temperature = None if target is None else float(target)
+            self._suspended = bool(data["suspended"])
+        except (KeyError, TypeError, ValueError) as err:
+            _LOGGER.warning("ignoring unusable stored thermostat state: %s", err)
+            return
+        _LOGGER.info(
+            "restored: mode %s, target %s, %s",
+            self._attr_hvac_mode,
+            self._attr_target_temperature,
+            "yielded" if self._suspended else "in control",
+        )
+        # Before anything can ask, so that a restored request is visible to the
+        # auto-off timer from the moment it exists rather than from the first
+        # time this regulates.
+        self._sync_manager()
 
     async def _async_tick(self, _now: Any) -> None:
         if self._attr_hvac_mode is HVACMode.HEAT and not self._suspended:

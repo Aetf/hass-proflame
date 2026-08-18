@@ -138,7 +138,7 @@ Blank means no change of state.
 | S3 handset changed `power` | | → `IDLE` | → `IDLE` |
 | S3 handset changed `flame` | | → `YIELDED` | |
 | S3 handset changed anything else | | | |
-| S4 restore | → mode as stored | | |
+| S4 restore | → mode as stored, yield included | | |
 | S5 transmitter gone | | stays, stops trying | stays |
 | S6 send failed | | stays, belief unchanged | stays |
 | S7 reconcile | | | |
@@ -162,6 +162,13 @@ first, so that a yielded thermostat could be switched off without touching the
 fire. That was a special case, and special cases in this table are exactly what
 produced the bugs it exists to prevent: reaching for the thermostat is reaching
 for the thermostat, whichever of its controls you touch.
+
+**A restore brings back the yield, not just the mode.** Restoring a
+thermostat to `heat` while forgetting that somebody had taken the flame off it
+would have it resume at the next tick and override a level a person set by
+hand — the exact surprise the yield exists to prevent, delivered by a restart
+rather than by a bug in the table. Nothing is transmitted on restore; the next
+tick decides.
 
 **U3 and U4 change nothing.** The blower and the light are not part of
 regulating; the thermostat passes the blower through as a convenience. Only the
@@ -301,8 +308,8 @@ everything for an hour looks exactly like a fireplace nobody has touched.
 ## What this analysis found that is still wrong
 
 Writing the tables surfaced three defects that using the integration had not,
-and review added two features it does not have. All but G3 are now done; each
-is kept here with what it turned into, since the diagnosis is the part worth
+and review added two features it does not have. All are now done; each is kept
+here with what it turned into, since the diagnosis is the part worth
 re-reading.
 
 **G1 (done). An expiring timer cannot reach a yielded thermostat.** Shutdown stops
@@ -311,9 +318,10 @@ not. Its mode stays `heat`, so the next resume relights a fire the timer had
 just put out. Row S2 of the ownership table says `YIELDED → IDLE`; the code
 does not do it.
 
-**G3 (outstanding). The thermostat's mode does not survive a restart.** It is not a
-`RestoreEntity`, so a restart silently ends heating and leaves whatever was lit
-burning unmanaged. Row S4 says the mode is restored.
+**G3 (done). The thermostat's mode does not survive a restart.** It was not a
+`RestoreEntity`, so a restart silently ended heating and left whatever was lit
+burning unmanaged. Row S4 says the mode is restored, and it now is — along with
+the target and the yield, for the reason under that table.
 
 **G4 (done). A transmitter outage is invisible to the control loop.** Every
 tick tried, failed, and logged; nothing backed off and the thermostat reported
@@ -348,7 +356,7 @@ registry stores.
 
 Then G6, independent and self-contained, and G7 alongside it since the
 reconciler's clock and the failure diagnostics are the same bookkeeping. G3
-remains, and is independent of everything.
+last, being independent of everything.
 
 An earlier draft of this document listed a defect that turned out not to be
 one: it had turning off a yielded thermostat leave the fire alone, as a
