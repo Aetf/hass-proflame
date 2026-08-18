@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import logging
 from typing import Any, override
 
 from homeassistant.components.select import SelectEntity
@@ -15,6 +16,8 @@ from homeassistant.util import dt as dt_util
 from . import ProflameConfigEntry
 from .const import AUTO_OFF_NONE, AUTO_OFF_OPTIONS
 from .entity import ProflameEntity
+
+_LOGGER = logging.getLogger(__name__)
 
 CONTINUOUS = "continuous"
 INTERMITTENT = "intermittent"
@@ -111,12 +114,18 @@ class ProflameAutoOff(ProflameEntity, SelectEntity):
             self._cancel = None
 
     async def _fired(self, _now: datetime) -> None:
-        """Time is up: put the fire out and disarm."""
+        """Time is up: stop everything heating, and disarm.
+
+        Not merely "turn the fire off". A thermostat that was regulating would
+        find the fire out, decide the room was still cold, and light it again
+        within the minute — leaving a safety feature that a thermostat silently
+        overrules.
+        """
+        _LOGGER.info("auto-off reached; shutting the fireplace down")
         self._cancel = None
         self._option = AUTO_OFF_NONE
         await self.device.async_set_auto_off(None)
-        if self.device.state.power:
-            await self.device.async_set(power=False)
+        await self.device.async_shut_down()
         self.async_write_ha_state()
 
     @override
@@ -142,13 +151,18 @@ class ProflameAutoOff(ProflameEntity, SelectEntity):
 
     @callback
     def _fire_state_changed(self) -> None:
-        """Disarm when the fire goes out by any other means.
+        """Disarm when the fireplace is finished with, not merely idle.
 
-        The handset, another automation, or the switch here — a timer that
-        stayed armed after the fire was already out would put out whatever was
-        lit next, which is worse than useless.
+        A timer left armed after the fire was already out would put out
+        whatever was lit next, which is worse than useless. But "the fire is
+        out" is not the same as "somebody is done with it": a thermostat that
+        has reached temperature cycles the fire off constantly, and disarming
+        there would quietly delete a timer the moment the room got warm.
+
+        So it disarms when the fire is out *and* nothing is driving it.
         """
-        if self._option != AUTO_OFF_NONE and not self.device.state.power:
+        finished = not self.device.state.power and not self.device.managed
+        if self._option != AUTO_OFF_NONE and finished:
             self._disarm()
             self._option = AUTO_OFF_NONE
             self.hass.async_create_task(self.device.async_set_auto_off(None))

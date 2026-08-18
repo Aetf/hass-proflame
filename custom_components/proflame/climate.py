@@ -98,6 +98,7 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         #: that is what was asked for and it has not been withdrawn; this is
         #: what the appliance is actually doing about it, which is nothing.
         self._suspended = False
+        self._unregister: Any = None
 
     @property
     @override
@@ -131,6 +132,37 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         """Say plainly whether the thermostat is in control right now."""
         return {"thermostat_in_control": not self._suspended}
 
+    @callback
+    def _sync_manager(self) -> None:
+        """Declare, or stop declaring, that this is driving the appliance.
+
+        Registered only while actually regulating — heating and not yielded —
+        because the flag is what tells the auto-off timer whether a fire that
+        is currently out is idle or finished.
+        """
+        regulating = self._attr_hvac_mode is HVACMode.HEAT and not self._suspended
+        if regulating and self._unregister is None:
+            self._unregister = self.device.async_register_manager(
+                "thermostat", self._stop_regulating
+            )
+        elif not regulating and self._unregister is not None:
+            self._unregister()
+            self._unregister = None
+
+    @callback
+    def _stop_regulating(self) -> None:
+        """Give up control because something told everything to stop.
+
+        The mode goes to off because this really is a withdrawal of the
+        request, unlike yielding the flame — the timer expired, and heating is
+        over until somebody asks again.
+        """
+        _LOGGER.info("told to stop; the thermostat is standing down")
+        self._attr_hvac_mode = HVACMode.OFF
+        self._commanded_flame = None
+        self._unregister = None
+        self.async_write_ha_state()
+
     @override
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Start or stop regulating.
@@ -153,6 +185,7 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
                 await self.device.async_set(power=False)
         else:
             await self._async_regulate(force=True)
+        self._sync_manager()
         self.async_write_ha_state()
 
     @property
@@ -182,6 +215,7 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         self._suspended = False
         if self._attr_hvac_mode is HVACMode.HEAT:
             await self._async_regulate(force=True)
+        self._sync_manager()
         self.async_write_ha_state()
 
     @override
@@ -199,6 +233,14 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         self.async_on_remove(
             async_track_time_interval(self.hass, self._async_tick, _EVALUATE_EVERY)
         )
+
+        @callback
+        def deregister() -> None:
+            if self._unregister is not None:
+                self._unregister()
+                self._unregister = None
+
+        self.async_on_remove(deregister)
 
     async def _async_tick(self, _now: Any) -> None:
         if self._attr_hvac_mode is HVACMode.HEAT and not self._suspended:
@@ -230,6 +272,7 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
             )
             self._suspended = True
             self._commanded_flame = None
+            self._sync_manager()
         self.async_write_ha_state()
 
     async def _async_regulate(self, *, force: bool = False) -> None:

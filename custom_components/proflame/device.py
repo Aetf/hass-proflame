@@ -53,6 +53,15 @@ class ProflameDevice:
         #: a restart cannot quietly drop it and leave the fire burning.
         self.auto_off_at: datetime | None = None
         self._listeners: list[Callable[[], None]] = []
+        #: Anything currently driving the appliance on its own, by name, with
+        #: the callback that makes it stop. The thermostat registers while it
+        #: is regulating.
+        #:
+        #: Two features need this and neither works without it. A timer that
+        #: only turned the fire off would be undone by the thermostat relighting
+        #: it a minute later, and a timer that disarmed whenever the fire went
+        #: out would vanish the first time the thermostat idled.
+        self._managers: dict[str, Callable[[], None]] = {}
         self._store = Store[dict[str, Any]](hass, _STORE_VERSION, f"{entry_id}_state")
 
     async def async_load(self) -> None:
@@ -118,6 +127,41 @@ class ProflameDevice:
         return async_dispatcher_connect(
             self.hass, SIGNAL_RX_FRAME.format(transmitter_entry_id), handle_frame
         )
+
+    @property
+    def managed(self) -> bool:
+        """Whether something is driving the appliance by itself right now.
+
+        A fire that is out but managed is idle, not finished — which is the
+        difference between the thermostat pausing and somebody switching the
+        fireplace off.
+        """
+        return bool(self._managers)
+
+    @callback
+    def async_register_manager(
+        self, name: str, stop: Callable[[], None]
+    ) -> Callable[[], None]:
+        """Declare that something is driving the appliance, and how to stop it."""
+        self._managers[name] = stop
+
+        def unregister() -> None:
+            self._managers.pop(name, None)
+
+        return unregister
+
+    async def async_shut_down(self) -> None:
+        """Stop everything driving the appliance, then put the fire out.
+
+        Turning the fire off is not enough on its own: whatever was managing it
+        would simply light it again. Anything that means "stop heating" rather
+        than "off for now" has to come through here.
+        """
+        for stop in list(self._managers.values()):
+            stop()
+        self._managers.clear()
+        if self.state.power:
+            await self.async_set(power=False)
 
     async def async_set(self, **changes: object) -> None:
         """Change some fields and transmit the whole resulting state.
