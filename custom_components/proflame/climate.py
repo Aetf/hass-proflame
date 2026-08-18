@@ -180,12 +180,16 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         self._attr_hvac_mode = hvac_mode
         self._commanded_flame = None
         self._suspended = False
+        # Before touching the appliance, not after. Anything watching for a
+        # fire that goes out has to be able to tell "the thermostat is idling"
+        # from "nobody is driving this", and the first thing a fresh heat mode
+        # may do is turn the fire off because the room is already warm.
+        self._sync_manager()
         if hvac_mode is HVACMode.OFF:
             if self.device.state.power:
                 await self.device.async_set(power=False)
         else:
             await self._async_regulate(force=True)
-        self._sync_manager()
         self.async_write_ha_state()
 
     @property
@@ -213,9 +217,9 @@ class ProflameThermostat(ProflameEntity, ClimateEntity):
         self._attr_target_temperature = float(target)
         # Setting a target is engaging with the thermostat, so it resumes.
         self._suspended = False
+        self._sync_manager()
         if self._attr_hvac_mode is HVACMode.HEAT:
             await self._async_regulate(force=True)
-        self._sync_manager()
         self.async_write_ha_state()
 
     @override
