@@ -46,10 +46,20 @@ class ProflameEntity(Entity):
         state = self.hass.states.get(self.device.transmitter)
         return state is not None and state.state != STATE_UNAVAILABLE
 
+    @callback
+    def _handle_device_update(self) -> None:
+        """React to the believed state changing.
+
+        Overridable: most entities only need to redraw, but the thermostat
+        also has to notice when something else has moved the flame out from
+        under it.
+        """
+        self.async_write_ha_state()
+
     async def async_added_to_hass(self) -> None:
         """Track the shared state and the transmitter's availability."""
         await super().async_added_to_hass()
-        self.async_on_remove(self.device.async_add_listener(self.async_write_ha_state))
+        self.async_on_remove(self.device.async_add_listener(self._handle_device_update))
 
         @callback
         def transmitter_changed(_event: object) -> None:

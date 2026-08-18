@@ -12,6 +12,14 @@
       "retry": {
         "title": "Nothing was heard",
         "description": "No frame arrived in a minute. Check that the receiver is listening on the right band and is within range of the handset, then try again."
+      },
+      "reconfigure": {
+        "title": "Change the radio",
+        "description": "Which transmitter reaches the fireplace, and on which band. The handset already learned is kept.",
+        "data": {
+          "frequency": "Band",
+          "transmitter": "Transmitter"
+        }
       }
     },
     "error": {},
@@ -19,7 +27,8 @@
       "no_transmitters": "No radio frequency transmitters are set up. Add one first, such as HackRF Proxy.",
       "no_compatible_transmitters": "No transmitter can reach 315 or 433.92 MHz with OOK.",
       "transmitter_unusable": "That transmitter cannot be used; it has no config entry to receive through.",
-      "already_configured": "This handset is already set up."
+      "already_configured": "This handset is already set up.",
+      "reconfigure_successful": "The fireplace now uses the new transmitter."
     },
     "progress": {
       "listening": "Listening. Press any button on the fireplace handset now \u2014 this only reads what the handset transmits and changes nothing about the appliance."
@@ -52,6 +61,33 @@
         "state": {
           "continuous": "Continuous (CPI)",
           "intermittent": "Intermittent (IPI)"
+        }
+      },
+      "auto_off": {
+        "name": "Auto-off",
+        "state": {
+          "none": "Off",
+          "30_minutes": "After 30 minutes",
+          "1_hour": "After 1 hour",
+          "2_hours": "After 2 hours",
+          "3_hours": "After 3 hours",
+          "4_hours": "After 4 hours"
+        }
+      }
+    },
+    "climate": {
+      "thermostat": {
+        "name": "Thermostat"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Thermostat",
+        "description": "Pick a temperature sensor and this fireplace gains a thermostat that regulates the flame from it. Leave it empty for no thermostat.\n\nThe thermostat only decides how hot; it does not decide whether the fire should be lit at all. Conditions like nobody being home belong in an automation, which is where they can see the rest of the house.",
+        "data": {
+          "temperature_sensor": "Temperature sensor"
         }
       }
     }

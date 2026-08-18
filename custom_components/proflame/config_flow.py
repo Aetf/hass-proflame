@@ -14,7 +14,12 @@ from typing import Any, override
 import voluptuous as vol
 
 from homeassistant.components.radio_frequency import ModulationType, async_get_transmitters
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er, selector
@@ -22,6 +27,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     CONF_FREQUENCY,
+    CONF_TEMPERATURE_SENSOR,
     CONF_KEY1,
     CONF_KEY2,
     CONF_SERIAL1,
@@ -39,6 +45,12 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for a Proflame fireplace."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> ProflameOptionsFlow:
+        """Get the options flow."""
+        return ProflameOptionsFlow()
 
     def __init__(self) -> None:
         """Initialize the flow."""
@@ -179,3 +191,91 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
             return None
         finally:
             unsubscribe()
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Point the fireplace at a different transmitter, or another band.
+
+        Separate from the options flow because it changes how the appliance is
+        reached rather than how it behaves — and because the radio is expected
+        to move: it is a laptop today and something permanent later. Nothing
+        here re-learns the handset, which has not changed.
+        """
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                data={
+                    **entry.data,
+                    CONF_FREQUENCY: int(user_input[CONF_FREQUENCY]),
+                    CONF_TRANSMITTER: er.async_get(self.hass)
+                    .async_get(user_input[CONF_TRANSMITTER])
+                    .id,
+                },
+            )
+
+        try:
+            transmitters = async_get_transmitters(
+                self.hass, FCC_FREQUENCY, ModulationType.OOK
+            ) + async_get_transmitters(self.hass, CE_FREQUENCY, ModulationType.OOK)
+        except HomeAssistantError:
+            return self.async_abort(reason="no_transmitters")
+
+        current = er.async_get(self.hass).async_get(entry.data[CONF_TRANSMITTER])
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_FREQUENCY, default=str(entry.data.get(CONF_FREQUENCY, FCC_FREQUENCY))
+                    ): vol.In(
+                        {
+                            str(FCC_FREQUENCY): "315 MHz (FCC)",
+                            str(CE_FREQUENCY): "433.92 MHz (CE)",
+                        }
+                    ),
+                    vol.Required(
+                        CONF_TRANSMITTER,
+                        default=current.entity_id if current else None,
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(include_entities=transmitters)
+                    ),
+                }
+            ),
+        )
+
+
+class ProflameOptionsFlow(OptionsFlow):
+    """Settings that change how the fireplace behaves, not how it is reached."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose the temperature source for the thermostat.
+
+        Leaving it empty removes the thermostat entirely rather than leaving a
+        climate entity that cannot read a temperature.
+        """
+        if user_input is not None:
+            sensor = user_input.get(CONF_TEMPERATURE_SENSOR) or None
+            return self.async_create_entry(
+                data={CONF_TEMPERATURE_SENSOR: sensor} if sensor else {}
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(
+                    {
+                        vol.Optional(CONF_TEMPERATURE_SENSOR): selector.EntitySelector(
+                            selector.EntitySelectorConfig(
+                                domain="sensor", device_class="temperature"
+                            )
+                        )
+                    }
+                ),
+                self.config_entry.options,
+            ),
+        )

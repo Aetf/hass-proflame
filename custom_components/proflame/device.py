@@ -14,12 +14,15 @@ it is stale, and the next press on it will transmit that stale state.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 import logging
+from typing import Any
 
 from homeassistant.components.radio_frequency import async_send_command
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .protocol import ProflameCommand, Remote, State, decode_frame
 
@@ -46,8 +49,11 @@ class ProflameDevice:
         self.remote = remote
         self.frequency = frequency
         self.state = State()
+        #: When the auto-off timer should fire, if one is armed. Persisted so
+        #: a restart cannot quietly drop it and leave the fire burning.
+        self.auto_off_at: datetime | None = None
         self._listeners: list[Callable[[], None]] = []
-        self._store = Store[dict[str, int]](hass, _STORE_VERSION, f"{entry_id}_state")
+        self._store = Store[dict[str, Any]](hass, _STORE_VERSION, f"{entry_id}_state")
 
     async def async_load(self) -> None:
         """Restore the state believed current when Home Assistant last ran.
@@ -70,6 +76,8 @@ class ProflameDevice:
                 )
             except (KeyError, ValueError) as err:
                 _LOGGER.warning("ignoring unusable stored state: %s", err)
+            if (deadline := stored.get("auto_off_at")) is not None:
+                self.auto_off_at = dt_util.parse_datetime(deadline)
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
@@ -128,9 +136,19 @@ class ProflameDevice:
 
         await self._async_adopt(target)
 
+    async def async_set_auto_off(self, deadline: datetime | None) -> None:
+        """Remember when the fire should be put out, or that it should not."""
+        self.auto_off_at = deadline
+        await self._async_save()
+
     async def _async_adopt(self, state: State) -> None:
         """Believe this state, remember it, and tell the entities."""
         self.state = state
+        await self._async_save()
+        self._notify()
+
+    async def _async_save(self) -> None:
+        state = self.state
         await self._store.async_save(
             {
                 "power": int(state.power),
@@ -141,9 +159,9 @@ class ProflameDevice:
                 "aux": int(state.aux),
                 "front": int(state.front),
                 "pilot": int(state.pilot),
+                "auto_off_at": self.auto_off_at.isoformat() if self.auto_off_at else None,
             }
         )
-        self._notify()
 
     @callback
     def _notify(self) -> None:

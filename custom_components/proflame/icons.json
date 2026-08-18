@@ -16,6 +16,17 @@
     "select": {
       "pilot_mode": {
         "default": "mdi:candle"
+      },
+      "auto_off": {
+        "default": "mdi:timer-off-outline",
+        "state": {
+          "none": "mdi:timer-off-outline"
+        }
+      }
+    },
+    "climate": {
+      "thermostat": {
+        "default": "mdi:home-thermometer"
       }
     }
   }
