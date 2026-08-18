@@ -44,6 +44,8 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the flow."""
         self._transmitter: str | None = None
         self._frequency: int = FCC_FREQUENCY
+        self._learn_task: asyncio.Task[Remote | None] | None = None
+        self._remote: Remote | None = None
 
     @override
     async def async_step_user(
@@ -89,19 +91,47 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_learn(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Listen for one button press, to learn which handset this is."""
+        """Listen for one button press, to learn which handset this is.
+
+        A progress step rather than a form. A form would have to be submitted
+        before the listening started, leaving nothing on screen to say whether
+        to press the button before or after — and then freezing for a minute
+        either way. This says it is listening *while* it listens, and moves on
+        by itself the moment a frame arrives.
+        """
         assert self._transmitter is not None
         registry = er.async_get(self.hass)
         entity_entry = registry.async_get(self._transmitter)
         if entity_entry is None or entity_entry.config_entry_id is None:
             return self.async_abort(reason="transmitter_unusable")
 
-        if user_input is None:
-            return self.async_show_form(step_id="learn")
+        if self._learn_task is None:
+            self._learn_task = self.hass.async_create_task(
+                self._async_learn_remote(entity_entry.config_entry_id)
+            )
 
-        remote = await self._async_learn_remote(entity_entry.config_entry_id)
-        if remote is None:
-            return self.async_show_form(step_id="learn", errors={"base": "no_frame"})
+        if not self._learn_task.done():
+            return self.async_show_progress(
+                step_id="learn",
+                progress_action="listening",
+                progress_task=self._learn_task,
+            )
+
+        self._remote = self._learn_task.result()
+        self._learn_task = None
+        return self.async_show_progress_done(
+            next_step_id="finish" if self._remote is not None else "retry"
+        )
+
+    async def async_step_finish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Record the handset that was heard."""
+        assert self._remote is not None and self._transmitter is not None
+        remote = self._remote
+        entity_entry = er.async_get(self.hass).async_get(self._transmitter)
+        if entity_entry is None:
+            return self.async_abort(reason="transmitter_unusable")
 
         await self.async_set_unique_id(f"{remote.serial1:02x}{remote.serial2:02x}")
         self._abort_if_unique_id_configured()
@@ -118,6 +148,14 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_KEY2: remote.key2,
             },
         )
+
+    async def async_step_retry(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Nothing was heard; offer to listen again."""
+        if user_input is not None:
+            return await self.async_step_learn()
+        return self.async_show_form(step_id="retry")
 
     async def _async_learn_remote(self, transmitter_entry_id: str) -> Remote | None:
         """Wait for a frame the receiver hears, and take the handset from it."""

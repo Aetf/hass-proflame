@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
@@ -36,9 +36,15 @@ class ProflameEntity(Entity):
 
         The appliance itself cannot be asked anything, so this is the only
         availability there is to report.
+
+        Only `unavailable` counts. A transmitter's *state* is the timestamp of
+        the last command it sent, so a working one that has never been asked
+        for anything reads `unknown` — treating that as unavailable leaves
+        every entity here dead until something has already been transmitted,
+        which is a deadlock.
         """
         state = self.hass.states.get(self.device.transmitter)
-        return state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+        return state is not None and state.state != STATE_UNAVAILABLE
 
     async def async_added_to_hass(self) -> None:
         """Track the shared state and the transmitter's availability."""
