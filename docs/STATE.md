@@ -44,7 +44,7 @@ legal value. What constrains it is where changes may come from, below.
 
 It is a *belief*. The appliance is stateless, nothing can be queried, and the
 levels that survive a power cycle survive in the handset. See
-`docs/PROTOCOL.md`.
+the protocol notes in the [proflame](https://github.com/Aetf/proflame) repository.
 
 ### 2. Control ownership
 
