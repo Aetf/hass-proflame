@@ -1,5 +1,2 @@
-target/
-*.iq
-*.cs8
-captures/
 __pycache__/
+.venv/
