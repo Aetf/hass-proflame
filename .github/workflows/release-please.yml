@@ -19,7 +19,7 @@ jobs:
         id: generate-token
         with:
           app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
-          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          private-key: ${{ secrets.RELEASE_PLZ_PRIVATE_KEY }}
       # The GitHub Release this cuts is the HACS distribution channel; the
       # manifest.json version is bumped via extra-files (see
       # release-please-config.json).
