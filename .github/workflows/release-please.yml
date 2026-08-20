@@ -23,6 +23,6 @@ jobs:
       # The GitHub Release this cuts is the HACS distribution channel; the
       # manifest.json version is bumped via extra-files (see
       # release-please-config.json).
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           token: ${{ steps.generate-token.outputs.token }}
