@@ -28,8 +28,8 @@ from .const import (
     DOMAIN,
 )
 from .device import ProflameDevice
-from .reconciler import ProflameReconciler
 from .protocol import FCC_FREQUENCY, Remote
+from .reconciler import ProflameReconciler
 
 type ProflameConfigEntry = ConfigEntry[ProflameDevice]
 

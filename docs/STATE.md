@@ -156,12 +156,12 @@ relights a fire somebody just switched off by hand.
 takes effect.** Setting the target resumes control; so does selecting heat; so
 does selecting off — which then means stop heating, and the fire goes out.
 
-This is one rule rather than three, and it replaces an earlier draft where
-selecting off was the single thermostat interaction that did *not* resume
-first, so that a yielded thermostat could be switched off without touching the
-fire. That was a special case, and special cases in this table are exactly what
-produced the bugs it exists to prevent: reaching for the thermostat is reaching
-for the thermostat, whichever of its controls you touch.
+This is one rule rather than three, on purpose. Making off the single
+thermostat interaction that does *not* resume first — so that a yielded
+thermostat could be switched off without touching the fire — would be a
+special case, and special cases in this table are exactly what produce the
+bugs it exists to prevent: reaching for the thermostat is reaching for the
+thermostat, whichever of its controls you touch.
 
 **A restore brings back the yield, not just the mode.** Restoring a
 thermostat to `heat` while forgetting that somebody had taken the flame off it
@@ -198,7 +198,7 @@ With origins carried explicitly this stops being a special case: disarm when
 
 ## The reconciler
 
-Everything above keeps the *belief* correct. Nothing so far keeps the
+Everything above keeps the *belief* correct. Nothing above keeps the
 **appliance** correct, and the two can drift: a transmission that was accepted
 by the air but not by the appliance, a handset press during a radio outage, the
 appliance losing mains power. There is no way to ask it, so the only way to
@@ -305,62 +305,28 @@ everything for an hour looks exactly like a fireplace nobody has touched.
    the one every bug violated, and carrying the origin is what makes it hold by
    construction rather than by comparing values carefully enough.
 
-## What this analysis found that is still wrong
+## Consequences that are easy to get wrong
 
-Writing the tables surfaced three defects that using the integration had not,
-and review added two features it does not have. All are now done; each is kept
-here with what it turned into, since the diagnosis is the part worth
-re-reading.
+Three behaviors follow from the tables but deserve prose, because each replaced
+a subtler wrong version:
 
-**G1 (done). An expiring timer cannot reach a yielded thermostat.** Shutdown stops
-everything registered as driving, and a `YIELDED` thermostat deliberately is
-not. Its mode stays `heat`, so the next resume relights a fire the timer had
-just put out. Row S2 of the ownership table says `YIELDED → IDLE`; the code
-does not do it.
+- **The expiring timer stops everything, including a yielded thermostat.** A
+  `YIELDED` thermostat is deliberately not registered as driving, but row S2
+  still takes it to `IDLE` — otherwise its next resume would relight a fire the
+  timer had just put out.
+- **The auto-off expiry transmits first and disarms only on success.**
+  Disarming first looks equivalent and is not: a radio outage at the deadline
+  would leave the fire lit and delete the one thing meant to put it out. The
+  deadline stays standing in the past and retries when the transmitter
+  returns.
+- **The control loop catches transmission failures rather than raising.** A
+  control loop is the one caller with nobody to raise at; it is already
+  rate-limited by `_MIN_INTERVAL`, which doubles as the backoff. Failures are
+  counted and surfaced by the diagnostic sensors, so an outage is visible
+  rather than merely logged.
 
-**G3 (done). The thermostat's mode does not survive a restart.** It was not a
-`RestoreEntity`, so a restart silently ended heating and left whatever was lit
-burning unmanaged. Row S4 says the mode is restored, and it now is — along with
-the target and the yield, for the reason under that table.
-
-**G4 (done). A transmitter outage is invisible to the control loop.** Every
-tick tried, failed, and logged; nothing backed off and the thermostat reported
-itself as regulating while reaching nothing. Row S5 says it should stay in
-state but stop trying.
-
-Three parts, and the third was not in the original diagnosis. Failures are now
-counted and shown (G7), so the outage is visible rather than merely logged. The
-control loop catches them instead of raising into the event loop once a minute
-— a control loop is the one caller with nobody to raise at, and it is already
-rate-limited by `_MIN_INTERVAL`, which is the backoff. And the auto-off expiry,
-which had the same shape, had it worse: it disarmed *before* transmitting, so a
-radio outage at the deadline left the fire lit and deleted the one thing meant
-to put it out. It now transmits first and only disarms on success, leaving the
-deadline standing in the past and retrying when the transmitter returns.
-
-And the change that made the rest of it hold by construction rather than by
-care: **G5 (done), carry the origin**, which removed `_commanded_flame` and
-`_commanded_power`. Those two existed only to guess at origin from values, and
-guessing is what this document exists to end.
-
-Then the two additions: **G6 (done), the reconciler**, and **G7 (done), the
-transmission-failure diagnostics**.
-
-## Order of work
-
-G5 first, and not for tidiness. G1 and G4 are small once the origin is carried
-and fiddly comparisons while it is not — implementing them first would mean
-writing the same class of bug once more on the way to removing it. That was the
-order taken, and it held: G1 came out as a two-line change to what the manager
-registry stores.
-
-Then G6, independent and self-contained, and G7 alongside it since the
-reconciler's clock and the failure diagnostics are the same bookkeeping. G3
-last, being independent of everything.
-
-An earlier draft of this document listed a defect that turned out not to be
-one: it had turning off a yielded thermostat leave the fire alone, as a
-deliberate exception. Making every thermostat interaction resume control first
-is both simpler and what a person expects, and the exception has been removed
-rather than implemented. Worth recording that the table caught its own mistake
-before any code did.
+One non-edge is worth recording so it is not "fixed" back in: turning off a
+*yielded* thermostat does put the fire out. Every interaction with the
+thermostat resumes control first, and the new mode then takes effect — making
+off the one control that did not resume would be a special case, and special
+cases in these tables are what produce bugs.

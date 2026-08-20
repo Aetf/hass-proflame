@@ -7,3 +7,10 @@ Proflame
 backoff
 deadband
 hardcoding
+jeffgregx2
+LilyGO
+rtl
+rtl_433
+smartfire
+YardStick
+HACS-Proflame2

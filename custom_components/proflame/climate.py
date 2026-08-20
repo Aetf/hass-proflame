@@ -10,9 +10,9 @@ placed one than the handset's.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import timedelta
-import logging
 from typing import Any, override
 
 from homeassistant.components.climate import (
@@ -22,7 +22,12 @@ from homeassistant.components.climate import (
     HVACAction,
     HVACMode,
 )
-from homeassistant.const import ATTR_TEMPERATURE, STATE_UNAVAILABLE, STATE_UNKNOWN, UnitOfTemperature
+from homeassistant.const import (
+    ATTR_TEMPERATURE,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    UnitOfTemperature,
+)
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -240,7 +245,8 @@ class ProflameThermostat(ProflameEntity, ClimateEntity, RestoreEntity):
         that is already there, so how hard it should run is a preference
         rather than something to solve for.
         """
-        await self.device.async_set(Origin.THERMOSTAT, fan=0 if fan_mode == FAN_OFF else int(fan_mode))
+        fan = 0 if fan_mode == FAN_OFF else int(fan_mode)
+        await self.device.async_set(Origin.THERMOSTAT, fan=fan)
 
     @override
     async def async_set_temperature(self, **kwargs: Any) -> None:

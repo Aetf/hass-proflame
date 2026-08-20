@@ -13,11 +13,11 @@ it is stale, and the next press on it will transmit that stale state.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-import logging
 from typing import Any
 
 from homeassistant.components.radio_frequency import async_send_command

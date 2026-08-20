@@ -12,7 +12,6 @@ import asyncio
 from typing import Any, override
 
 import voluptuous as vol
-
 from homeassistant.components.radio_frequency import ModulationType, async_get_transmitters
 from homeassistant.config_entries import (
     ConfigEntry,
@@ -22,17 +21,18 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er, selector
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import selector
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     CONF_FREQUENCY,
-    CONF_TEMPERATURE_SENSOR,
     CONF_KEY1,
     CONF_KEY2,
     CONF_RECONCILE_INTERVAL,
     CONF_SERIAL1,
     CONF_SERIAL2,
+    CONF_TEMPERATURE_SENSOR,
     CONF_TRANSMITTER,
     CONF_VERSION,
     DEFAULT_RECONCILE_INTERVAL,

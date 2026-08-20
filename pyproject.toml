@@ -17,3 +17,9 @@ reportMissingTypeStubs = false
 # Home Assistant re-exports platform enums from component roots without
 # redeclaring them; importing from there is the documented pattern.
 reportPrivateImportUsage = false
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]

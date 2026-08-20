@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import override
 
+from rf_protocols import ModulationType, RadioFrequencyCommand
+
 from proflame import (
     CE_FREQUENCY,
     DEFAULT_REPEATS,
@@ -22,7 +24,6 @@ from proflame import (
     decode_frame,
     encode_timings,
 )
-from rf_protocols import ModulationType, RadioFrequencyCommand
 
 __all__ = [
     "CE_FREQUENCY",

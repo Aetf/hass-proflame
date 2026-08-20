@@ -12,8 +12,8 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-
 from proflame import Remote, State, encode_timings
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.proflame.const import (
     CONF_FREQUENCY,
@@ -27,8 +27,6 @@ from custom_components.proflame.const import (
     SIGNAL_RX_FRAME,
 )
 from custom_components.proflame.protocol import FCC_FREQUENCY
-
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 #: A handset with the same shape as a real one, keys and all.
 HANDSET = Remote(serial1=0x21, serial2=0xDD, version=0x02, key1=0x3A, key2=0x9C)
