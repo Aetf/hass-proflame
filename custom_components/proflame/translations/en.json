@@ -50,11 +50,6 @@
         "name": "Accent light"
       }
     },
-    "switch": {
-      "fireplace": {
-        "name": null
-      }
-    },
     "select": {
       "pilot_mode": {
         "name": "Pilot mode",

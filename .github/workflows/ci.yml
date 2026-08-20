@@ -27,6 +27,8 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # Until the brands PR (home-assistant/brands) is merged; drop then.
+          ignore: brands
 
   test:
     name: Test
