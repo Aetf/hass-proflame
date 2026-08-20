@@ -26,12 +26,16 @@ pip-installs.
 
 ## Installing
 
+[![Open this repository inside HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Aetf&repository=hass-proflame&category=integration)
+
 Via [HACS](https://hacs.xyz/): add `https://github.com/Aetf/hass-proflame` as
 a custom repository (category: integration), install, and restart Home
 Assistant. Manual alternative: copy `custom_components/proflame/` into your
 config's `custom_components/` and restart.
 
 ## Setting up
+
+[![Start the config flow in your Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=proflame)
 
 Add **SIT Proflame Fireplace** from Settings → Devices & services. The flow
 asks for a band and a transmitter, then listens for **one button press on
