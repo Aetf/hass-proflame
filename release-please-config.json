@@ -12,8 +12,7 @@
           "path": "custom_components/proflame/manifest.json",
           "jsonpath": "$.version"
         }
-      ],
-      "release-as": "0.1.0"
+      ]
     }
   }
 }
