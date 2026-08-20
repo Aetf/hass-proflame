@@ -27,10 +27,6 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # The brands repository no longer accepts custom-integration icons
-          # (HA 2026.3+ serves them from the integration's own brand/ dir).
-          # Drop this once brand/icon.png ships here.
-          ignore: brands
 
   test:
     name: Test

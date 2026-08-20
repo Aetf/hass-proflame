@@ -121,6 +121,15 @@ Afterward:
   Proflame 2 decoder — handy for watching frames with an RTL-SDR,
   independent of Home Assistant entirely.
 
+## Trademarks
+
+Independent and unofficial: not affiliated with, endorsed by, or sponsored by
+SIT S.p.A. "SIT", "Proflame" and the Proflame logo are their trademarks, and
+the brand images shipped for Home Assistant's integration listing are their
+artwork. Those images make the integration recognizable in the UI and are
+excluded from this project's license. See [NOTICE](NOTICE).
+
 ## License
 
-MIT OR Apache-2.0, at your option.
+MIT OR Apache-2.0, at your option. (Except the third-party brand images noted
+above.)

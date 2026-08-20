@@ -1,0 +1,21 @@
+Third-party trademarks
+======================
+
+This project is an independent, unofficial integration. It is not affiliated
+with, endorsed by, or sponsored by SIT S.p.A. (SIT Group).
+
+"SIT", "Proflame" and the Proflame logo are trademarks of SIT S.p.A. The
+brand images under `custom_components/proflame/brand/` are reproductions of
+SIT's Proflame mark, taken from SIT's own published application icon at
+https://proflame.sitgroup.it/ and rescaled for Home Assistant's brand image
+requirements. They are included for one purpose: so that Home Assistant can
+show users which appliance this integration controls.
+
+Those images are **not** covered by this project's MIT/Apache-2.0 license.
+The project cannot grant rights it does not hold; the marks remain the
+property of their owner, and this notice does not grant permission to use
+them for any other purpose. Everything else in this repository is licensed as
+stated in LICENSE-MIT and LICENSE-APACHE.
+
+If you are the trademark owner and would prefer these images not be
+distributed here, please open an issue and they will be removed.
