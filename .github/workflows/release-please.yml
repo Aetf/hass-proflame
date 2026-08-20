@@ -18,7 +18,7 @@ jobs:
         uses: actions/create-github-app-token@v3
         id: generate-token
         with:
-          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          client-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
           private-key: ${{ secrets.RELEASE_PLZ_PRIVATE_KEY }}
       # The GitHub Release this cuts is the HACS distribution channel; the
       # manifest.json version is bumped via extra-files (see
