@@ -1,5 +1,9 @@
 """The config flow, including learning a handset from one real encoded frame."""
 
+# Home Assistant test idioms: flow results are TypedDicts asserted key by key,
+# and the flow manager's generics leave async_configure partially unknown.
+# pyright: reportTypedDictNotRequiredAccess=false, reportUnknownMemberType=false
+
 from unittest.mock import patch
 
 from homeassistant.config_entries import SOURCE_USER

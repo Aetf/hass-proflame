@@ -4,7 +4,7 @@ Five separate bugs in this integration were the same bug. Each was found by
 using it, fixed in the place it showed up, and each fix was reasoned out —
 twice wrongly. That is a method failing, not luck running out, so this document
 enumerates the states, the events and every edge between them, and the next
-change to behaviour should start here rather than in a file.
+change to behavior should start here rather than in a file.
 
 ## The mistake they all share
 
@@ -216,7 +216,7 @@ suppress a re-assertion that has just been made redundant — the mechanism
 cannot produce one.
 
 A restart is the same event by construction: nothing has been transmitted since
-Home Assistant came up. In fact it does not even wait an interval — with no
+Home Assistant came up. In fact, it does not even wait an interval — with no
 transmission to count from, it reconciles as soon as the transmitter becomes
 usable. That is the case with the most to repair, since the handset may have
 been used throughout the restart with nothing listening, and it needs no
@@ -233,7 +233,7 @@ changes nothing; if the belief is wrong, the error it corrects is a fire
 burning that Home Assistant thinks is out — which is the one worth correcting.
 
 Re-asserting `power = on` can relight. If the belief is stale — something put
-the fire out and we did not hear it — a re-assertion lights a gas appliance
+the fire out, and we did not hear it — a re-assertion lights a gas appliance
 that a person may have deliberately extinguished, possibly with nobody there.
 
 What makes that tolerable rather than reckless is that **the reconciler only

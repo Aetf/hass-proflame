@@ -1,5 +1,8 @@
 # SIT Proflame Fireplace for Home Assistant
 
+[![CI](https://github.com/Aetf/hass-proflame/actions/workflows/ci.yml/badge.svg)](https://github.com/Aetf/hass-proflame/actions/workflows/ci.yml)
+[![HACS](https://img.shields.io/badge/HACS-custom-41BDF5)](https://hacs.xyz/)
+
 A custom integration for gas fireplaces driven by the SIT Proflame 2 remote
 system, over any `radio_frequency` OOK transmitter — for example
 [hass-hackrf-proxy](https://github.com/Aetf/hass-hackrf-proxy). The protocol
@@ -36,7 +39,7 @@ and both checksum constants off that frame. Nobody types in hex — and, more
 to the point, those constants are *per handset*, so hardcoding anyone's would
 be wrong for every other remote.
 
-Afterwards, the temperature sensor and the re-send interval are in the
+Afterward, the temperature sensor and the re-send interval are in the
 integration's options. The transmitter and band are in its reconfigure flow,
 separate because they change how the appliance is *reached* rather than how
 it behaves — and because the radio may move, which should not mean losing the
@@ -61,7 +64,7 @@ that legible rather than surprising.
 
 Everything else here transmits when something *changes*, which is not enough:
 the appliance can drift away from the belief with nothing changing here — a
-frame the air carried but the appliance did not act on, a handset press while
+frame the air carried, but the appliance did not act on, a handset press while
 the receiver was down, a mains interruption. None of that is detectable, so
 the only repair available is to say the whole state again.
 
@@ -80,7 +83,7 @@ a stale belief needs a radio in range of the fireplace but not of the
 handset. Residual rather than zero, and `docs/STATE.md` says so rather than
 waving it away.
 
-### The thermostat, and where safety belongs
+### The thermostat — and where safety belongs
 
 The appliance's own thermostat lives in the handset and reads a sensor inside
 it. The `climate` entity regulates from any sensor Home Assistant can read
@@ -99,7 +102,7 @@ to off puts the fire out: somebody said stop heating. Someone moving the
 flame slider is not that request — the thermostat yields, leaving both the
 mode and the fire alone:
 
-| | `hvac_mode` | `hvac_action` | driving |
+| Situation | `hvac_mode` | `hvac_action` | Driving |
 |---|---|---|---|
 | regulating, fire lit | `heat` | `heating` | yes |
 | regulating, room warm enough | `heat` | `idle` | yes |
@@ -132,7 +135,7 @@ something means — so every command clears that bit instead.
 Several bugs here were one bug: each decided *who* had caused a change by
 comparing values, which cannot tell "I did that" from "somebody else did the
 same thing". [`docs/STATE.md`](docs/STATE.md) enumerates the states, every
-event and every edge, and is where a behaviour change should start.
+event and every edge, and is where a behavior change should start.
 
 ## License
 

@@ -158,7 +158,7 @@ class ProflameDevice:
         from .const import SIGNAL_RX_FRAME  # noqa: PLC0415
 
         @callback
-        def handle_frame(frame: dict) -> None:
+        def handle_frame(frame: dict[str, Any]) -> None:
             decoded = decode_frame(frame.get("timings", []))
             if decoded is None:
                 return

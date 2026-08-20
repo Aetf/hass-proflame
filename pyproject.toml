@@ -2,3 +2,18 @@
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
+
+[tool.basedpyright]
+include = ["custom_components", "tests"]
+typeCheckingMode = "strict"
+# basedpyright's opinions beyond pyright strict; Home Assistant's own APIs
+# keep Any at several boundaries. The entity model overrides attribute-backed
+# fields with properties by design, and several deps ship no stubs.
+reportAny = false
+reportExplicitAny = false
+reportUnusedCallResult = false
+reportIncompatibleVariableOverride = false
+reportMissingTypeStubs = false
+# Home Assistant re-exports platform enums from component roots without
+# redeclaring them; importing from there is the documented pattern.
+reportPrivateImportUsage = false

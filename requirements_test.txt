@@ -1,3 +1,4 @@
 pytest-homeassistant-custom-component
 rf_protocols
 proflame
+basedpyright

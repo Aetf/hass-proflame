@@ -94,7 +94,7 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
                             str(CE_FREQUENCY): "433.92 MHz (CE)",
                         }
                     ),
-                    vol.Required(CONF_TRANSMITTER): selector.EntitySelector(
+                    vol.Required(CONF_TRANSMITTER): selector.EntitySelector(  # pyright: ignore[reportUnknownMemberType]
                         selector.EntitySelectorConfig(include_entities=transmitters)
                     ),
                 }
@@ -176,7 +176,7 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
         found: asyncio.Future[Remote] = asyncio.get_running_loop().create_future()
 
         @callback
-        def handle_frame(frame: dict) -> None:
+        def handle_frame(frame: dict[str, Any]) -> None:
             if found.done():
                 return
             decoded = decode_frame(frame.get("timings", []))
@@ -207,14 +207,15 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reconfigure_entry()
 
         if user_input is not None:
+            transmitter = er.async_get(self.hass).async_get(user_input[CONF_TRANSMITTER])
+            if transmitter is None:
+                return self.async_abort(reason="transmitter_unusable")
             return self.async_update_reload_and_abort(
                 entry,
                 data={
                     **entry.data,
                     CONF_FREQUENCY: int(user_input[CONF_FREQUENCY]),
-                    CONF_TRANSMITTER: er.async_get(self.hass)
-                    .async_get(user_input[CONF_TRANSMITTER])
-                    .id,
+                    CONF_TRANSMITTER: transmitter.id,
                 },
             )
 
@@ -241,7 +242,7 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_TRANSMITTER,
                         default=current.entity_id if current else None,
-                    ): selector.EntitySelector(
+                    ): selector.EntitySelector(  # pyright: ignore[reportUnknownMemberType]
                         selector.EntitySelectorConfig(include_entities=transmitters)
                     ),
                 }
@@ -273,7 +274,7 @@ class ProflameOptionsFlow(OptionsFlow):
             data_schema=self.add_suggested_values_to_schema(
                 vol.Schema(
                     {
-                        vol.Optional(CONF_TEMPERATURE_SENSOR): selector.EntitySelector(
+                        vol.Optional(CONF_TEMPERATURE_SENSOR): selector.EntitySelector(  # pyright: ignore[reportUnknownMemberType]
                             selector.EntitySelectorConfig(
                                 domain="sensor", device_class="temperature"
                             )
@@ -281,7 +282,7 @@ class ProflameOptionsFlow(OptionsFlow):
                         vol.Required(
                             CONF_RECONCILE_INTERVAL,
                             default=DEFAULT_RECONCILE_INTERVAL,
-                        ): selector.NumberSelector(
+                        ): selector.NumberSelector(  # pyright: ignore[reportUnknownMemberType]
                             selector.NumberSelectorConfig(
                                 min=0,
                                 max=180,

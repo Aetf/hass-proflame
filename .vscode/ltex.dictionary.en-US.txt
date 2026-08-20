@@ -1,0 +1,9 @@
+CI HACS
+HACS
+hass-hackrf-proxy
+OOK
+proflame
+Proflame
+backoff
+deadband
+hardcoding
