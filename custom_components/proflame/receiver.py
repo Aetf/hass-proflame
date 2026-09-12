@@ -73,6 +73,14 @@ class FrameSource(ABC):
         return self.entry.title
 
     @abstractmethod
+    async def async_available(self) -> bool:
+        """Whether the radio can hear anything right now.
+
+        Decides what the picker lists and preselects, so a source whose radio
+        cannot be asked (not loaded, offline) answers no rather than guessing.
+        """
+
+    @abstractmethod
     @callback
     def async_subscribe(self, handler: FrameHandler) -> CALLBACK_TYPE:
         """Hand every frame the radio hears to ``handler``; returns the unsubscribe."""
@@ -82,6 +90,10 @@ class HackrfProxySource(FrameSource):
     """Frames from hass-hackrf-proxy, re-broadcast on a dispatcher signal."""
 
     domain = "hackrf_proxy"
+
+    async def async_available(self) -> bool:
+        """Always: the daemon receives whenever it is not transmitting."""
+        return True
 
     @callback
     def async_subscribe(self, handler: FrameHandler) -> CALLBACK_TYPE:
@@ -109,6 +121,29 @@ class EsphomeSource(FrameSource):
     """
 
     domain = "esphome"
+
+    async def async_available(self) -> bool:
+        """Ask the device whether it has a ``radio_frequency`` receiver.
+
+        Home Assistant's record of the device (``runtime_data.info``) files
+        only RF transmitters, so the device itself is asked for its entity
+        list — the same round trip the esphome integration makes on every
+        connect. It is paid only here, on the user-paced picker path.
+        """
+        # Deferred so the integration imports on installs without ESPHome.
+        from aioesphomeapi import RadioFrequencyCapability, RadioFrequencyInfo  # noqa: PLC0415
+
+        if self.entry.state is not ConfigEntryState.LOADED:
+            return False
+        entry_data: RuntimeEntryData = self.entry.runtime_data
+        if not entry_data.available:
+            return False
+        infos, _ = await entry_data.client.list_entities_services()
+        return any(
+            isinstance(info, RadioFrequencyInfo)
+            and info.capabilities & RadioFrequencyCapability.RECEIVER
+            for info in infos
+        )
 
     @callback
     def async_subscribe(self, handler: FrameHandler) -> CALLBACK_TYPE:
@@ -188,14 +223,14 @@ _IMPLEMENTATIONS: dict[str, type[FrameSource]] = {
 }
 
 
-@callback
-def async_list_sources(hass: HomeAssistant) -> list[FrameSource]:
-    """Every source there is, for the picker."""
-    return [
+async def async_list_sources(hass: HomeAssistant) -> list[FrameSource]:
+    """Every source whose radio can hear right now, for the picker."""
+    candidates = [
         _IMPLEMENTATIONS[entry.domain](hass, entry)
         for entry in hass.config_entries.async_entries()
         if entry.domain in _IMPLEMENTATIONS
     ]
+    return [source for source in candidates if await source.async_available()]
 
 
 @callback

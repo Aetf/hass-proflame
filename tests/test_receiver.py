@@ -3,10 +3,15 @@
 # pyright: reportUnknownMemberType=false
 
 from collections.abc import Callable, Iterator
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aioesphomeapi import InfraredInfo, InfraredRFReceiveEvent
+from aioesphomeapi import (
+    InfraredInfo,
+    InfraredRFReceiveEvent,
+    RadioFrequencyCapability,
+    RadioFrequencyInfo,
+)
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -47,7 +52,7 @@ async def test_sources_are_named_by_domain_and_entry(hass: HomeAssistant) -> Non
     # A transmit-only integration offers no source, so it is not listed.
     MockConfigEntry(domain="broadlink", title="rm4").add_to_hass(hass)
 
-    listed = async_list_sources(hass)
+    listed = await async_list_sources(hass)
     assert [source.id for source in listed] == [f"hackrf_proxy:{radio.entry_id}"]
     assert listed[0].name == "sdr"
     assert (
@@ -74,6 +79,11 @@ class FakeEntryData:
         self.available = True
         self.client = MagicMock()
         self.client.subscribe_infrared_rf_receive.side_effect = self._subscribe
+        # What the device answers when asked for its entities; a transmitter
+        # only, until a test gives it a receiver.
+        self.client.list_entities_services = AsyncMock(
+            return_value=([rf_info(RadioFrequencyCapability.TRANSMITTER)], [])
+        )
         # Home Assistant files infrared entities but not RF receivers, which
         # is exactly why the source tells them apart by the former.
         self.info = {
@@ -113,6 +123,10 @@ class FakeEntryData:
                 {"device_id": key[0], "key": key[1], "timings": timings}
             )
         )
+
+
+def rf_info(capabilities: int) -> RadioFrequencyInfo:
+    return RadioFrequencyInfo.from_dict({"key": RECEIVER_KEY[1], "capabilities": capabilities})
 
 
 @pytest.fixture
@@ -220,3 +234,36 @@ async def test_esphome_entry_is_listened_to_once_it_loads(
     assert reloaded.unsubscribed == 1
     unload(hass, esphome_entry)
     assert load(hass, esphome_entry).client.subscribe_infrared_rf_receive.call_count == 0
+
+
+async def test_hackrf_proxy_always_receives(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain="hackrf_proxy", title="sdr")
+    entry.add_to_hass(hass)
+    source = async_source_for_entry(hass, entry.entry_id)
+    assert source is not None
+    assert await source.async_available()
+
+
+async def test_esphome_receives_only_if_the_device_says_so(
+    hass: HomeAssistant, esphome_entry: MockConfigEntry
+) -> None:
+    """The device is asked, because Home Assistant's own record files no RF receivers."""
+    source = esphome_source(hass, esphome_entry)
+    assert not await source.async_available()
+
+    data = load(hass, esphome_entry)
+    assert not await source.async_available(), "a transmitter alone does not hear"
+    assert await async_list_sources(hass) == []
+
+    data.client.list_entities_services.return_value = (
+        [
+            InfraredInfo.from_dict({"key": INFRARED_KEY[1]}),
+            rf_info(RadioFrequencyCapability.TRANSMITTER | RadioFrequencyCapability.RECEIVER),
+        ],
+        [],
+    )
+    assert await source.async_available()
+    assert [s.id for s in await async_list_sources(hass)] == [source.id]
+
+    data.available = False
+    assert not await source.async_available(), "an offline device cannot be asked"

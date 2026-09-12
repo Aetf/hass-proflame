@@ -19,7 +19,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
@@ -92,7 +92,7 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_compatible_transmitters")
         # Setup learns the handset by listening, so a receiver is a must
         # here even though the fireplace can be driven without one.
-        if not async_list_sources(self.hass):
+        if not await async_list_sources(self.hass):
             return self.async_abort(reason="no_receivers")
 
         return self.async_show_form(
@@ -119,8 +119,9 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
         """Pick the radio that hears the handset.
 
         Its own step, after the transmitter, so that the radio owning the
-        transmitter can be offered as the default: the one that transmits
-        usually hears too, but nothing says it has to be the same device.
+        transmitter can be offered as the default when it has been confirmed
+        to hear: the one that transmits usually does, but nothing says it has
+        to be the same device, or that it has a receiver at all.
         """
         assert self._transmitter is not None
         if user_input is not None:
@@ -130,19 +131,17 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
         entity_entry = er.async_get(self.hass).async_get(self._transmitter)
         if entity_entry is None:
             return self.async_abort(reason="transmitter_unusable")
+        sources = await async_list_sources(self.hass)
         own = (
             async_source_for_entry(self.hass, entity_entry.config_entry_id)
             if entity_entry.config_entry_id is not None
             else None
         )
+        default = own.id if own is not None and own.id in {s.id for s in sources} else vol.UNDEFINED
         return self.async_show_form(
             step_id="receiver",
             data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_RECEIVER, default=own.id if own is not None else vol.UNDEFINED
-                    ): _receiver_selector(self.hass),
-                }
+                {vol.Required(CONF_RECEIVER, default=default): _receiver_selector(sources)}
             ),
         )
 
@@ -272,6 +271,16 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_transmitters")
 
         current = er.async_get(self.hass).async_get(entry.data[CONF_TRANSMITTER])
+        sources = await async_list_sources(self.hass)
+        # The receiver in use stays on the list even while its radio is down,
+        # so that changing the band does not silently drop it.
+        configured = entry.data.get(CONF_RECEIVER)
+        if (
+            configured is not None
+            and configured not in {s.id for s in sources}
+            and (source := async_get_source(self.hass, configured)) is not None
+        ):
+            sources.append(source)
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema(
@@ -293,20 +302,22 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Optional(
                         CONF_RECEIVER,
                         description={"suggested_value": entry.data.get(CONF_RECEIVER)},
-                    ): _receiver_selector(self.hass),
+                    ): _receiver_selector(sources),
                 }
             ),
         )
 
 
 @callback
-def _receiver_selector(hass: HomeAssistant) -> selector.Selector[selector.SelectSelectorConfig]:
-    """A dropdown of every radio whose integration can receive."""
+def _receiver_selector(
+    sources: list[FrameSource],
+) -> selector.Selector[selector.SelectSelectorConfig]:
+    """A dropdown of the given radios."""
     return selector.SelectSelector(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
         selector.SelectSelectorConfig(
             options=[
                 selector.SelectOptionDict(value=source.id, label=source.name)
-                for source in async_list_sources(hass)
+                for source in sources
             ],
             mode=selector.SelectSelectorMode.DROPDOWN,
         )

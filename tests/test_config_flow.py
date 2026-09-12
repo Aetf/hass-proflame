@@ -6,10 +6,11 @@
 
 from collections.abc import Callable, Iterator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from aioesphomeapi import InfraredRFReceiveEvent
+import voluptuous as vol
+from aioesphomeapi import InfraredRFReceiveEvent, RadioFrequencyCapability, RadioFrequencyInfo
 from homeassistant.config_entries import SOURCE_RECONFIGURE, SOURCE_USER, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -59,23 +60,47 @@ def owner_of(transmitter: er.RegistryEntry) -> str:
     return transmitter.config_entry_id
 
 
+def esphome_node(hass: HomeAssistant, capabilities: int) -> tuple[MockConfigEntry, MagicMock]:
+    """An esphome entry that looks loaded, whose device reports one RF entity."""
+    entry = MockConfigEntry(domain="esphome", title="node")
+    entry.add_to_hass(hass)
+    client = MagicMock()
+    client.subscribe_infrared_rf_receive.return_value = lambda: None
+    client.list_entities_services = AsyncMock(
+        return_value=(
+            [RadioFrequencyInfo.from_dict({"key": 7, "capabilities": capabilities})],
+            [],
+        )
+    )
+    entry.runtime_data = MagicMock(available=True, client=client, info={})
+    entry.runtime_data.async_subscribe_device_updated.return_value = lambda: None
+    entry.mock_state(hass, ConfigEntryState.LOADED)
+    return entry, client
+
+
 @pytest.fixture
 def esphome_radio(hass: HomeAssistant) -> Iterator[tuple[MockConfigEntry, MagicMock]]:
-    """An esphome entry that looks loaded, with a client that records its subscriber.
+    """An esphome node with an RF receiver, whose client records its subscriber.
 
     Marked loaded only for the test's duration: the hass fixture's teardown
     unloads loaded entries through the real integration, which is not
     installed here.
     """
-    entry = MockConfigEntry(domain="esphome", title="node")
-    entry.add_to_hass(hass)
-    client = MagicMock()
-    client.subscribe_infrared_rf_receive.return_value = lambda: None
-    entry.runtime_data = MagicMock(available=True, client=client, info={})
-    entry.runtime_data.async_subscribe_device_updated.return_value = lambda: None
-    entry.mock_state(hass, ConfigEntryState.LOADED)
+    entry, client = esphome_node(hass, RadioFrequencyCapability.RECEIVER)
     try:
         yield entry, client
+    finally:
+        entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
+
+
+@pytest.fixture
+def esphome_transmitter(hass: HomeAssistant) -> Iterator[er.RegistryEntry]:
+    """A transmitter on an esphome node that has no receiver."""
+    entry, _ = esphome_node(hass, RadioFrequencyCapability.TRANSMITTER)
+    try:
+        yield er.async_get(hass).async_get_or_create(
+            "radio_frequency", "esphome", "node-tx", config_entry=entry
+        )
     finally:
         entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
 
@@ -127,7 +152,7 @@ async def test_one_button_press_teaches_the_flow_the_handset(
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "receiver"
         # The radio that owns the transmitter is offered first, since it
-        # usually hears too.
+        # usually hears too — and hass-hackrf-proxy always does.
         own = f"hackrf_proxy:{owner_of(transmitter)}"
         assert result["data_schema"] is not None
         assert result["data_schema"]({}) == {CONF_RECEIVER: own}
@@ -200,6 +225,31 @@ async def test_the_receiver_need_not_be_the_transmitter(
     assert result["data"][CONF_TRANSMITTER] == transmitter.id
     assert result["data"][CONF_RECEIVER] == receiver
     assert result["data"][CONF_SERIAL1] == HANDSET.serial1
+
+
+async def test_a_transmitter_that_cannot_hear_is_not_preselected(
+    hass: HomeAssistant,
+    esphome_transmitter: er.RegistryEntry,
+    esphome_radio: tuple[MockConfigEntry, MagicMock],
+) -> None:
+    """The default is verified with the device, not assumed from ownership."""
+    with patch(
+        "custom_components.proflame.config_flow.async_get_transmitters",
+        return_value=[esphome_transmitter.entity_id],
+    ):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_FREQUENCY: str(FCC_FREQUENCY), CONF_TRANSMITTER: esphome_transmitter.entity_id},
+        )
+    assert result["step_id"] == "receiver"
+    assert result["data_schema"] is not None
+    with pytest.raises(vol.MultipleInvalid):
+        result["data_schema"]({})
+    # Only the node that hears is on offer; the transmit-only one is not.
+    markers = {str(marker): marker for marker in result["data_schema"].schema}
+    options = result["data_schema"].schema[markers[CONF_RECEIVER]].config["options"]
+    assert [option["value"] for option in options] == [f"esphome:{esphome_radio[0].entry_id}"]
 
 
 async def test_no_receiver_at_all_aborts_setup(hass: HomeAssistant) -> None:

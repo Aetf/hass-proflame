@@ -103,9 +103,11 @@ Afterward:
   channel is one `FrameSource` implementation in
   `custom_components/proflame/receiver.py`, the single place to retire when
   a real receiver platform lands; the rest of the integration sees only
-  timings. Consequence today: the receiver picker lists exactly the radios
-  whose integration has such a channel, and a setup without one still
-  controls the fireplace but goes deaf to the handset.
+  timings. Consequence today: the receiver picker lists the radios that
+  have such a channel *and* confirm they can hear (an ESPHome node is asked
+  for its entities, since Home Assistant files none of its RF receivers),
+  and a setup without one still controls the fireplace but goes deaf to the
+  handset.
 - **Upstreaming.** The intended path is the protocol encoder into Home
   Assistant's `rf-protocols` library first, then this integration into core
   once it meets the quality-scale bar.
