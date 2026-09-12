@@ -20,8 +20,9 @@ pip-installs.
 - Home Assistant **2026.5 or later** (the `radio_frequency` platform).
 - A `radio_frequency` transmitter entity that can reach 315 MHz (FCC) or
   433.92 MHz (CE) — whichever variant your appliance uses.
-- For following the handset and for setup's listen step: a transmitter whose
-  integration also *receives*, such as hass-hackrf-proxy (see
+- For setup's listen step and for following the handset: a radio whose
+  integration also *receives* — hass-hackrf-proxy, or an ESPHome device with
+  a `radio_frequency` receiver. It need not be the radio that transmits (see
   [Roadmap](#roadmap) for why receiving is non-standard today).
 
 ## Installing
@@ -38,20 +39,23 @@ config's `custom_components/` and restart.
 [![Start the config flow in your Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=proflame)
 
 Add **SIT Proflame Fireplace** from Settings → Devices & services. The flow
-asks for a band and a transmitter, then listens for **one button press on
-your handset** and learns everything from that frame: the handset's identity
-and both of its checksum constants. Nobody types in hex — and, more to the
-point, those constants are *per handset*, so hardcoding anyone's would be
-wrong for every other remote.
+asks for a band, a transmitter and a receiver (the radio behind the
+transmitter is preselected when it can hear), then listens for **one button
+press on your handset** and learns everything from that frame: the handset's
+identity and both of its checksum constants. Nobody types in hex — and, more
+to the point, those constants are *per handset*, so hardcoding anyone's would
+be wrong for every other remote.
 
 Afterward:
 
 - **Options**: the temperature sensor (adding one creates the thermostat;
   removing it removes the thermostat) and the state re-send interval
   (0 disables).
-- **Reconfigure**: the transmitter and the band — separate from options
-  because they change how the appliance is *reached*, and the radio may move
-  without the handset changing.
+- **Reconfigure**: the transmitter, the receiver and the band — separate from
+  options because they change how the appliance is *reached*, and the radios
+  may move without the handset changing. Leaving the receiver empty gives a
+  transmit-only setup: Home Assistant still controls the fireplace but no
+  longer follows the handset.
 
 ## What you get
 
@@ -90,15 +94,18 @@ Afterward:
 - **Receiving is currently non-standard, and will move when upstream does.**
   Home Assistant's `radio_frequency` platform is transmit-only so far; a
   receiver platform is sketched upstream but does not exist yet. Until it
-  does, this integration hears the handset through a dispatcher signal that
-  [hass-hackrf-proxy](https://github.com/Aetf/hass-hackrf-proxy)
-  re-broadcasts (`hackrf_proxy_rx_frame_{entry_id}`, the daemon's payload
-  verbatim). That is a private contract between the two integrations, kept
-  payload-compatible with the upstream sketch, so both sides migrate with
-  little churn when a real receiver platform lands. Consequence today:
-  following the handset works only with a transmitter integration that
-  offers this signal; transmit-only setups still control the fireplace but
-  go deaf to the handset.
+  does, this integration reaches into each receiving integration's
+  internals through a channel private to it — for
+  [hass-hackrf-proxy](https://github.com/Aetf/hass-hackrf-proxy) the
+  dispatcher signal it re-broadcasts the daemon's frames on
+  (`hackrf_proxy_rx_frame_{entry_id}`), for ESPHome the native API's
+  receive event behind the esphome integration's runtime data. Every such
+  channel is one `FrameSource` implementation in
+  `custom_components/proflame/receiver.py`, the single place to retire when
+  a real receiver platform lands; the rest of the integration sees only
+  timings. Consequence today: the receiver picker lists exactly the radios
+  whose integration has such a channel, and a setup without one still
+  controls the fireplace but goes deaf to the handset.
 - **Upstreaming.** The intended path is the protocol encoder into Home
   Assistant's `rf-protocols` library first, then this integration into core
   once it meets the quality-scale bar.

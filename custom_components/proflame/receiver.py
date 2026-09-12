@@ -35,8 +35,6 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import SIGNAL_RX_FRAME
-
 if TYPE_CHECKING:
     from aioesphomeapi import InfraredRFReceiveEvent
     from homeassistant.components.esphome.entry_data import RuntimeEntryData
@@ -44,6 +42,13 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 type FrameHandler = Callable[[list[int]], None]
+
+#: Dispatcher signal the hackrf_proxy integration re-broadcasts frames on,
+#: formatted with its config entry id. A cross-repository contract kept as a
+#: literal on purpose: hass-hackrf-proxy declares the same string, and
+#: importing it would couple this integration to one particular transmitter.
+#: The learn-flow test pins the format.
+SIGNAL_RX_FRAME = "hackrf_proxy_rx_frame_{}"
 
 
 class FrameSource(ABC):

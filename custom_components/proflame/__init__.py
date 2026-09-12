@@ -7,6 +7,7 @@ or an ESPHome node with a CC1101 beside the fireplace.
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
@@ -19,6 +20,7 @@ from .const import (
     CONF_FREQUENCY,
     CONF_KEY1,
     CONF_KEY2,
+    CONF_RECEIVER,
     CONF_RECONCILE_INTERVAL,
     CONF_SERIAL1,
     CONF_SERIAL2,
@@ -29,8 +31,10 @@ from .const import (
 )
 from .device import ProflameDevice
 from .protocol import FCC_FREQUENCY, Remote
-from .receiver import async_source_for_entry
+from .receiver import async_get_source, async_source_for_entry
 from .reconciler import ProflameReconciler
+
+_LOGGER = logging.getLogger(__name__)
 
 type ProflameConfigEntry = ConfigEntry[ProflameDevice]
 
@@ -72,14 +76,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProflameConfigEntry) -> 
     )
     await device.async_load()
 
-    # Follow the handset when it is used, through the receive side of the
-    # radio that owns the transmitter. A radio whose integration only
-    # transmits still controls the fireplace, but is deaf to the handset.
-    source = None
-    if entity_entry.config_entry_id is not None:
-        source = async_source_for_entry(hass, entity_entry.config_entry_id)
-    if source is not None:
-        entry.async_on_unload(device.async_start_listening(source))
+    # Follow the handset when it is used. A missing receiver is not worth
+    # refusing to set up over: commands still go out, the fireplace is
+    # merely deaf to the handset, and the log says so.
+    if (receiver := entry.data.get(CONF_RECEIVER)) is not None:
+        source = async_get_source(hass, receiver)
+        if source is None:
+            _LOGGER.warning(
+                "the configured receiver %s no longer exists; the handset is not followed",
+                receiver,
+            )
+        else:
+            entry.async_on_unload(device.async_start_listening(source))
 
     entry.runtime_data = device
     entry.async_on_unload(entry.add_update_listener(_async_reload))
@@ -97,6 +105,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProflameConfigEntry) -> 
         ),
     )
     entry.async_on_unload(reconciler.async_start())
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ProflameConfigEntry) -> bool:
+    """Bring an entry up to the flow's current shape.
+
+    1.1 entries have no receiver of their own: they listened through whatever
+    owned the transmitter. Recording that radio explicitly keeps them hearing
+    the handset the way they did.
+    """
+    if entry.version != 1:
+        return False
+    if entry.minor_version < 2:
+        data = dict(entry.data)
+        entity_entry = er.async_get(hass).async_get(data[CONF_TRANSMITTER])
+        if entity_entry is not None and entity_entry.config_entry_id is not None:
+            source = async_source_for_entry(hass, entity_entry.config_entry_id)
+            if source is not None:
+                data[CONF_RECEIVER] = source.id
+        hass.config_entries.async_update_entry(entry, data=data, minor_version=2)
     return True
 
 

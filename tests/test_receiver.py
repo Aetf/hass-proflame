@@ -12,8 +12,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proflame.const import SIGNAL_RX_FRAME
 from custom_components.proflame.receiver import (
+    SIGNAL_RX_FRAME,
     EsphomeSource,
     HackrfProxySource,
     async_get_source,

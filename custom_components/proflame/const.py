@@ -3,21 +3,16 @@
 DOMAIN = "proflame"
 
 CONF_TRANSMITTER = "transmitter"
+#: The frame source that hears the handset, as a receiver.FrameSource id.
+#: Absent on a transmit-only setup, which controls the fireplace but is deaf
+#: to the handset.
+CONF_RECEIVER = "receiver"
 CONF_FREQUENCY = "frequency"
 CONF_SERIAL1 = "serial1"
 CONF_SERIAL2 = "serial2"
 CONF_VERSION = "protocol_version"
 CONF_KEY1 = "key1"
 CONF_KEY2 = "key2"
-
-#: Dispatcher signal the hackrf_proxy transmitter re-broadcasts frames on,
-#: formatted with its config entry id. Interim, until Home Assistant has a
-#: receiver platform of its own.
-#:
-#: A cross-repository contract kept as a literal on purpose: hass-hackrf-proxy
-#: declares the same string, and importing it would couple this integration to
-#: one particular transmitter. The learn-flow test pins the format.
-SIGNAL_RX_FRAME = "hackrf_proxy_rx_frame_{}"
 
 #: How long the config flow listens for a button press while learning which
 #: handset it is talking to.

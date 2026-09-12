@@ -9,16 +9,24 @@
           "transmitter": "Transmitter"
         }
       },
+      "receiver": {
+        "title": "Choose a receiver",
+        "description": "Which radio hears the fireplace handset. Setup needs one: the next step learns the handset from a single button press. Afterwards it keeps Home Assistant in step with the handset. Preselected is the radio behind the transmitter, if it can receive; any other listed radio works too.",
+        "data": {
+          "receiver": "Receiver"
+        }
+      },
       "retry": {
         "title": "Nothing was heard",
         "description": "No frame arrived in a minute. Check that the receiver is listening on the right band and is within range of the handset, then try again."
       },
       "reconfigure": {
-        "title": "Change the radio",
-        "description": "Which transmitter reaches the fireplace, and on which band. The handset already learned is kept.",
+        "title": "Change the radios",
+        "description": "Which transmitter reaches the fireplace, on which band, and which receiver hears the handset. The handset already learned is kept. Leave the receiver empty for a transmit-only setup: Home Assistant still controls the fireplace but no longer follows the handset.",
         "data": {
           "frequency": "Band",
-          "transmitter": "Transmitter"
+          "transmitter": "Transmitter",
+          "receiver": "Receiver"
         }
       }
     },
@@ -26,9 +34,11 @@
     "abort": {
       "no_transmitters": "No radio frequency transmitters are set up. Add one first, such as HackRF Proxy.",
       "no_compatible_transmitters": "No transmitter can reach 315 or 433.92 MHz with OOK.",
-      "transmitter_unusable": "That transmitter cannot be used; it has no config entry to receive through.",
+      "no_receivers": "No radio that can receive is set up, and setup learns the handset by listening. Add one first, such as HackRF Proxy or an ESPHome device with a radio frequency receiver.",
+      "transmitter_unusable": "That transmitter is no longer in the entity registry.",
+      "receiver_unusable": "That receiver is no longer set up.",
       "already_configured": "This handset is already set up.",
-      "reconfigure_successful": "The fireplace now uses the new transmitter."
+      "reconfigure_successful": "The fireplace now uses the new radios."
     },
     "progress": {
       "listening": "Listening. Press any button on the fireplace handset now — this only reads what the handset transmits and changes nothing about the appliance."

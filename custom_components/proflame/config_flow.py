@@ -19,7 +19,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
@@ -28,6 +28,7 @@ from .const import (
     CONF_FREQUENCY,
     CONF_KEY1,
     CONF_KEY2,
+    CONF_RECEIVER,
     CONF_RECONCILE_INTERVAL,
     CONF_SERIAL1,
     CONF_SERIAL2,
@@ -39,13 +40,19 @@ from .const import (
     LEARN_TIMEOUT,
 )
 from .protocol import CE_FREQUENCY, FCC_FREQUENCY, Remote, decode_frame
-from .receiver import FrameSource, async_source_for_entry
+from .receiver import (
+    FrameSource,
+    async_get_source,
+    async_list_sources,
+    async_source_for_entry,
+)
 
 
 class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for a Proflame fireplace."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     @staticmethod
     @callback
@@ -56,6 +63,7 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the flow."""
         self._transmitter: str | None = None
+        self._receiver: str | None = None
         self._frequency: int = FCC_FREQUENCY
         self._learn_task: asyncio.Task[Remote | None] | None = None
         self._remote: Remote | None = None
@@ -70,7 +78,7 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._frequency = int(user_input[CONF_FREQUENCY])
             self._transmitter = user_input[CONF_TRANSMITTER]
-            return await self.async_step_learn()
+            return await self.async_step_receiver()
 
         # 315 MHz is the FCC variant and 433.92 the CE one, so which band the
         # appliance uses is regional rather than fixed.
@@ -82,6 +90,10 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_transmitters")
         if not transmitters:
             return self.async_abort(reason="no_compatible_transmitters")
+        # Setup learns the handset by listening, so a receiver is a must
+        # here even though the fireplace can be driven without one.
+        if not async_list_sources(self.hass):
+            return self.async_abort(reason="no_receivers")
 
         return self.async_show_form(
             step_id="user",
@@ -101,6 +113,39 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_receiver(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick the radio that hears the handset.
+
+        Its own step, after the transmitter, so that the radio owning the
+        transmitter can be offered as the default: the one that transmits
+        usually hears too, but nothing says it has to be the same device.
+        """
+        assert self._transmitter is not None
+        if user_input is not None:
+            self._receiver = user_input[CONF_RECEIVER]
+            return await self.async_step_learn()
+
+        entity_entry = er.async_get(self.hass).async_get(self._transmitter)
+        if entity_entry is None:
+            return self.async_abort(reason="transmitter_unusable")
+        own = (
+            async_source_for_entry(self.hass, entity_entry.config_entry_id)
+            if entity_entry.config_entry_id is not None
+            else None
+        )
+        return self.async_show_form(
+            step_id="receiver",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_RECEIVER, default=own.id if own is not None else vol.UNDEFINED
+                    ): _receiver_selector(self.hass),
+                }
+            ),
+        )
+
     async def async_step_learn(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -112,14 +157,10 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
         either way. This says it is listening *while* it listens, and moves on
         by itself the moment a frame arrives.
         """
-        assert self._transmitter is not None
-        registry = er.async_get(self.hass)
-        entity_entry = registry.async_get(self._transmitter)
-        if entity_entry is None or entity_entry.config_entry_id is None:
-            return self.async_abort(reason="transmitter_unusable")
-        source = async_source_for_entry(self.hass, entity_entry.config_entry_id)
+        assert self._receiver is not None
+        source = async_get_source(self.hass, self._receiver)
         if source is None:
-            return self.async_abort(reason="transmitter_unusable")
+            return self.async_abort(reason="receiver_unusable")
 
         if self._learn_task is None:
             self._learn_task = self.hass.async_create_task(self._async_learn_remote(source))
@@ -141,7 +182,8 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Record the handset that was heard."""
-        assert self._remote is not None and self._transmitter is not None
+        assert self._remote is not None
+        assert self._transmitter is not None and self._receiver is not None
         remote = self._remote
         entity_entry = er.async_get(self.hass).async_get(self._transmitter)
         if entity_entry is None:
@@ -154,6 +196,7 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
             title="Fireplace",
             data={
                 CONF_TRANSMITTER: entity_entry.id,
+                CONF_RECEIVER: self._receiver,
                 CONF_FREQUENCY: self._frequency,
                 CONF_SERIAL1: remote.serial1,
                 CONF_SERIAL2: remote.serial2,
@@ -195,12 +238,15 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Point the fireplace at a different transmitter, or another band.
+        """Point the fireplace at other radios, or another band.
 
         Separate from the options flow because it changes how the appliance is
         reached rather than how it behaves — and because the radio is expected
         to move: it is a laptop today and something permanent later. Nothing
-        here re-learns the handset, which has not changed.
+        here re-learns the handset, which has not changed — which is also why
+        the receiver may be left empty here and not at setup: a transmit-only
+        fireplace still obeys Home Assistant, it just stops following the
+        handset.
         """
         entry = self._get_reconfigure_entry()
 
@@ -208,14 +254,15 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
             transmitter = er.async_get(self.hass).async_get(user_input[CONF_TRANSMITTER])
             if transmitter is None:
                 return self.async_abort(reason="transmitter_unusable")
-            return self.async_update_reload_and_abort(
-                entry,
-                data={
-                    **entry.data,
-                    CONF_FREQUENCY: int(user_input[CONF_FREQUENCY]),
-                    CONF_TRANSMITTER: transmitter.id,
-                },
-            )
+            data = {
+                **entry.data,
+                CONF_FREQUENCY: int(user_input[CONF_FREQUENCY]),
+                CONF_TRANSMITTER: transmitter.id,
+            }
+            data.pop(CONF_RECEIVER, None)
+            if receiver := user_input.get(CONF_RECEIVER):
+                data[CONF_RECEIVER] = receiver
+            return self.async_update_reload_and_abort(entry, data=data)
 
         try:
             transmitters = async_get_transmitters(
@@ -243,9 +290,27 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
                     ): selector.EntitySelector(  # pyright: ignore[reportUnknownMemberType]
                         selector.EntitySelectorConfig(include_entities=transmitters)
                     ),
+                    vol.Optional(
+                        CONF_RECEIVER,
+                        description={"suggested_value": entry.data.get(CONF_RECEIVER)},
+                    ): _receiver_selector(self.hass),
                 }
             ),
         )
+
+
+@callback
+def _receiver_selector(hass: HomeAssistant) -> selector.Selector[selector.SelectSelectorConfig]:
+    """A dropdown of every radio whose integration can receive."""
+    return selector.SelectSelector(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        selector.SelectSelectorConfig(
+            options=[
+                selector.SelectOptionDict(value=source.id, label=source.name)
+                for source in async_list_sources(hass)
+            ],
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
 
 
 class ProflameOptionsFlow(OptionsFlow):
