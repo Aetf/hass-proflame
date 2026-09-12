@@ -17,6 +17,7 @@ from proflame import (
     CE_FREQUENCY,
     DEFAULT_REPEATS,
     FCC_FREQUENCY,
+    INTER_FRAME_GAP_US,
     MAX_LEVEL,
     DecodedFrame,
     Remote,
@@ -63,7 +64,12 @@ class ProflameCommand(RadioFrequencyCommand):
     @override
     def get_raw_timings(self) -> list[int]:
         """Encode as signed microseconds, positive for carrier on."""
-        return encode_timings(self.remote, self.state)
+        # The frame ends on a mark. Transmitters that honour repeat_count by
+        # sending the timings back-to-back (ESPHome remote_transmitter) would
+        # fuse that mark with the next frame's sync, so carry the inter-frame
+        # gap explicitly as a trailing space. Transmitters with their own gap
+        # merely add 4 ms of silence.
+        return encode_timings(self.remote, self.state) + [-INTER_FRAME_GAP_US]
 
     @override
     def __repr__(self) -> str:
