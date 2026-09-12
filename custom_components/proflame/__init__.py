@@ -29,6 +29,7 @@ from .const import (
 )
 from .device import ProflameDevice
 from .protocol import FCC_FREQUENCY, Remote
+from .receiver import async_source_for_entry
 from .reconciler import ProflameReconciler
 
 type ProflameConfigEntry = ConfigEntry[ProflameDevice]
@@ -71,10 +72,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProflameConfigEntry) -> 
     )
     await device.async_load()
 
-    # Follow the handset when it is used. The signal is keyed by the
-    # transmitter's own config entry, which is the receiver that hears it.
+    # Follow the handset when it is used, through the receive side of the
+    # radio that owns the transmitter. A radio whose integration only
+    # transmits still controls the fireplace, but is deaf to the handset.
+    source = None
     if entity_entry.config_entry_id is not None:
-        entry.async_on_unload(device.async_start_listening(entity_entry.config_entry_id))
+        source = async_source_for_entry(hass, entity_entry.config_entry_id)
+    if source is not None:
+        entry.async_on_unload(device.async_start_listening(source))
 
     entry.runtime_data = device
     entry.async_on_unload(entry.add_update_listener(_async_reload))

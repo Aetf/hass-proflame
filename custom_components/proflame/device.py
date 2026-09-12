@@ -22,11 +22,11 @@ from typing import Any
 
 from homeassistant.components.radio_frequency import async_send_command
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .protocol import ProflameCommand, Remote, State, decode_frame
+from .receiver import FrameSource
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -153,14 +153,14 @@ class ProflameDevice:
         return unsubscribe
 
     @callback
-    def async_start_listening(self, transmitter_entry_id: str) -> Callable[[], None]:
+    def async_start_listening(self, source: FrameSource) -> Callable[[], None]:
         """Follow the handset by watching what the receiver hears."""
-        from .const import SIGNAL_RX_FRAME  # noqa: PLC0415
 
         @callback
-        def handle_frame(frame: dict[str, Any]) -> None:
-            decoded = decode_frame(frame.get("timings", []))
+        def handle_frame(timings: list[int]) -> None:
+            decoded = decode_frame(timings)
             if decoded is None:
+                _LOGGER.debug("heard a frame that is not Proflame")
                 return
             # Somebody else's fireplace on the same band is not ours to follow.
             if (decoded.remote.serial1, decoded.remote.serial2) != (
@@ -179,9 +179,7 @@ class ProflameDevice:
                 self._async_adopt(decoded.state, Origin.HANDSET)
             )
 
-        return async_dispatcher_connect(
-            self.hass, SIGNAL_RX_FRAME.format(transmitter_entry_id), handle_frame
-        )
+        return source.async_subscribe(handle_frame)
 
     @property
     def managed(self) -> bool:

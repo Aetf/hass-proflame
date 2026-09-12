@@ -23,7 +23,6 @@ from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     CONF_FREQUENCY,
@@ -38,9 +37,9 @@ from .const import (
     DEFAULT_RECONCILE_INTERVAL,
     DOMAIN,
     LEARN_TIMEOUT,
-    SIGNAL_RX_FRAME,
 )
 from .protocol import CE_FREQUENCY, FCC_FREQUENCY, Remote, decode_frame
+from .receiver import FrameSource, async_source_for_entry
 
 
 class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -118,11 +117,12 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
         entity_entry = registry.async_get(self._transmitter)
         if entity_entry is None or entity_entry.config_entry_id is None:
             return self.async_abort(reason="transmitter_unusable")
+        source = async_source_for_entry(self.hass, entity_entry.config_entry_id)
+        if source is None:
+            return self.async_abort(reason="transmitter_unusable")
 
         if self._learn_task is None:
-            self._learn_task = self.hass.async_create_task(
-                self._async_learn_remote(entity_entry.config_entry_id)
-            )
+            self._learn_task = self.hass.async_create_task(self._async_learn_remote(source))
 
         if not self._learn_task.done():
             return self.async_show_progress(
@@ -171,21 +171,19 @@ class ProflameConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_learn()
         return self.async_show_form(step_id="retry")
 
-    async def _async_learn_remote(self, transmitter_entry_id: str) -> Remote | None:
+    async def _async_learn_remote(self, source: FrameSource) -> Remote | None:
         """Wait for a frame the receiver hears, and take the handset from it."""
         found: asyncio.Future[Remote] = asyncio.get_running_loop().create_future()
 
         @callback
-        def handle_frame(frame: dict[str, Any]) -> None:
+        def handle_frame(timings: list[int]) -> None:
             if found.done():
                 return
-            decoded = decode_frame(frame.get("timings", []))
+            decoded = decode_frame(timings)
             if decoded is not None:
                 found.set_result(decoded.remote)
 
-        unsubscribe = async_dispatcher_connect(
-            self.hass, SIGNAL_RX_FRAME.format(transmitter_entry_id), handle_frame
-        )
+        unsubscribe = source.async_subscribe(handle_frame)
         try:
             async with asyncio.timeout(LEARN_TIMEOUT):
                 return await found
